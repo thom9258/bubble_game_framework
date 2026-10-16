@@ -1,6 +1,7 @@
 #include "renderer.hpp"
 #include "context.hpp"
 #include "resources.hpp"
+#include "uniform_arena.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -570,6 +571,15 @@ auto initialize_flatcolor_sets() -> bool { return true; }
 auto initialize_rendergraphs() -> bool {
   for (std::size_t i = 0; i < frames_in_flight; i++) {
     instance().rendergraphs.push_back(TaskGraph{});
+  }
+
+  return true;
+}
+
+auto initialize_uniform_arenas() -> bool {
+  static constexpr const auto uniform_arena_size = 1024 * 10;
+  for (std::size_t i = 0; i < frames_in_flight; i++) {
+    instance().uniform_arenas.emplace_back(uniform_arena_size);
   }
 
   return true;

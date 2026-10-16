@@ -3,6 +3,7 @@
 #include "context.hpp"
 #include "task_graph.hpp"
 #include "texture.hpp"
+#include "uniform_arena.hpp"
 
 namespace bubble::renderer {
 
@@ -47,6 +48,7 @@ struct Instance {
   Color clearcolor{255, 0, 0, 255};
 
   std::vector<TaskGraph> rendergraphs;
+  std::vector<UniformArena> uniform_arenas;
 
   struct RenderBatch {
     std::vector<DrawCommand> drawcommands;

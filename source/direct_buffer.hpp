@@ -14,7 +14,7 @@ public:
 private:
   vk::UniqueBuffer _buffer;
   vk::UniqueDeviceMemory _memory;
-  size_t _size{0};
+  std::size_t _size{0};
   void *_ptr{nullptr};
 };
 
