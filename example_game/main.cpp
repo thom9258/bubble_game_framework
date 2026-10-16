@@ -3,6 +3,14 @@
 
 #include <print>
 
+auto vertices = std::vector<bubble::Vertex>{
+    bubble::Vertex{},
+    bubble::Vertex{},
+    bubble::Vertex{},
+};
+
+auto indices = std::vector<bubble::Index>{1, 2, 3, 1};
+
 int main(int argc, char **argv) {
   static_cast<void>(argc);
   static_cast<void>(argv);
@@ -21,33 +29,29 @@ int main(int argc, char **argv) {
                  init_info.width, init_info.height, duration.value().count());
   }
 
-  auto vertices = std::vector<bubble::Vertex>{
-      bubble::Vertex{},
-      bubble::Vertex{},
-      bubble::Vertex{},
-  };
-
-  auto indices = std::vector<bubble::Index>{
-      1,2,3,1
-  };
-
-  auto mesh_ref1 = bubble::create_mesh(vertices, indices);
-  auto mesh_ref2 = bubble::create_mesh(vertices, indices);
-  if (!mesh_ref2.has_value()) {
+  auto mesh1 = bubble::create_mesh(vertices, indices);
+  auto mesh2 = bubble::create_mesh(vertices, indices);
+  if (!mesh1.has_value() || !mesh2.has_value()) {
     return 1;
   }
 
-  std::println("Created mesh 2 index: {} gen: {}", mesh_ref2->index(),
-               mesh_ref2->generation());
+  std::println("Created mesh 2, index: {} gen: {}", mesh2->index(),
+               mesh2->generation());
 
-  bool should_close{false};
-  while (!should_close) {
-    bubble::next_frame();
-    should_close = bubble::requested_close();
+  auto bitmap = bubble::Bitmap(256, 256, bubble::Color{0, 255, 0, 255});
+  auto texture = bubble::create_texture(bitmap);
+  if (!texture.has_value()) {
+    return 1;
   }
 
-  bubble::destroy_mesh(mesh_ref1.value());
-  bubble::destroy_mesh(mesh_ref2.value());
+  bubble::set_clearcolor(bubble::Color{0, 0, 255, 255});
+
+  while (!bubble::requested_close()) {
+    bubble::begin_frame();
+    bubble::draw_flatcolor(*mesh1, bubble::Color{0, 0, 255, 255});
+    bubble::end_frame();
+  }
+
   bubble::destroy();
   return 0;
 }

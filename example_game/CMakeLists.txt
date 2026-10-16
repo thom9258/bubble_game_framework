@@ -21,6 +21,7 @@ set(SOURCES
     ../source/gpu_buffer.cpp
     ../source/texture.cpp
     ../source/bitmap.cpp
+    ../source/task_graph.cpp
 )
 
 add_executable(${PROJECT_NAME} main.cpp ${SOURCES})

@@ -49,6 +49,23 @@ public:
     }
   }
 
+  constexpr auto remove_all() -> void {
+    for (auto &entry : _entries) {
+      entry.value.reset();
+      entry.generation++;
+    }
+  }
+
+  [[nodiscard]]
+  constexpr auto get(Ref ref) -> T * {
+    Entry &entry = _entries[ref.index()];
+    if (entry.generation == ref.generation()) {
+      return &entry.value.value();
+    }
+
+    return nullptr;
+  }
+
 private:
   [[nodiscard]]
   constexpr auto find_empty_entry_index() -> std::optional<std::size_t> {

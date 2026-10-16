@@ -29,8 +29,6 @@ auto initialize(InitializeInfo &info) -> bool;
 
 auto destroy() -> void;
 
-auto next_frame() -> void;
-
 auto begin_drawing() -> void;
 
 auto end_drawing() -> void;
@@ -77,6 +75,14 @@ auto create_texture(Bitmap &bitmap) -> std::optional<TextureRef>;
 
 auto destroy_texture(TextureRef ref) -> void;
 
-auto draw(TextureRef, MeshRef) -> void;
+auto set_clearcolor(Color color) -> void;
+
+auto begin_frame() -> void;
+
+auto end_frame() -> void;
+
+auto draw_flatcolor(MeshRef mesh, Color color) -> void;
+
+//auto draw(TextureRef, MeshRef) -> void;
 
 } // namespace bubble

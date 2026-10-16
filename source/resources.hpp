@@ -10,6 +10,7 @@ namespace bubble::resources
 struct MeshSource {
   GPUBuffer vertices;
   GPUBuffer indices;
+  std::uint32_t indices_count;
 };
 
 struct TextureSource {
@@ -27,5 +28,9 @@ auto instance() -> Instance &;
 auto initialize() -> bool;
 
 auto destroy() -> void;
+
+auto get(MeshRef ref) -> MeshSource*;
+
+auto get(TextureRef ref) -> TextureSource*;
 
 }

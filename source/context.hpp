@@ -50,6 +50,7 @@ struct Instance {
   vk::UniqueDevice device;
   vk::Queue queue;
   vk::UniqueCommandPool commandpool;
+
 };
 
 auto instance() -> Instance &;
@@ -59,7 +60,7 @@ auto initialize(InitializeInfo &info) -> bool;
 
 auto destroy() -> void;
 
-auto next_frame() -> void;
+auto begin_frame() -> void;
 
 [[nodiscard]]
 auto requested_close() -> bool;
@@ -97,5 +98,10 @@ auto find_memory_type(
     vk::PhysicalDeviceMemoryProperties const &memoryProperties,
     uint32_t typeBits, vk::MemoryPropertyFlags requirementsMask)
     -> std::uint32_t;
+
+
+auto device() -> vk::Device;
+
+auto physical_device() -> vk::PhysicalDevice;
 
 } // namespace bubble::context

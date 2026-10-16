@@ -25,13 +25,28 @@ auto initialize(InitializeInfo &info) -> bool {
 
 auto destroy() -> void
 {
+    context::device().waitIdle();
+    resources::destroy();
     renderer::destroy();
     context::destroy();
-    resources::destroy();
 }
 
-auto next_frame() -> void { context::next_frame(); }
+auto begin_frame() -> void { 
+    context::begin_frame(); 
+    renderer::begin_frame(); 
+}
+
+auto set_clearcolor(Color color) -> void { renderer::set_clearcolor(color); }
 
 auto requested_close() -> bool { return context::requested_close(); }
+
+auto end_frame() -> void
+{
+    renderer::end_frame();
+}
+
+auto draw_flatcolor(MeshRef mesh, Color color) -> void {
+    renderer::draw_flatcolor(mesh, color);
+}
 
 } // namespace bubble

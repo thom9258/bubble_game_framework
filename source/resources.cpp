@@ -7,25 +7,6 @@
 
 #include <memory>
 
-namespace bubble::resources {
-
-namespace singleton {
-static std::unique_ptr<Instance> ginstance{nullptr};
-}
-
-auto instance() -> Instance & { return *singleton::ginstance; }
-
-[[nodiscard]]
-auto initialize() -> bool {
-  singleton::ginstance = std::make_unique<Instance>();
-
-  return true;
-}
-
-auto destroy() -> void { singleton::ginstance = nullptr; }
-
-} // namespace bubble::resources
-
 namespace bubble {
 
 MeshRef::MeshRef(std::uint32_t index, std::uint32_t generation)
@@ -83,7 +64,9 @@ auto create_mesh(std::span<Vertex> vertices, std::span<Index> indices)
   }
 
   auto ref = resources::instance().mesh_sources.add(resources::MeshSource(
-      std::move(vertices_buffer), std::move(indices_buffer)));
+      std::move(vertices_buffer), std::move(indices_buffer),
+      static_cast<std::uint32_t>(indices.size())));
+
   if (!ref.has_value()) {
     return std::nullopt;
   }
@@ -202,8 +185,8 @@ auto create_texture(Bitmap &bitmap) -> std::optional<TextureRef> {
     return std::nullopt;
   }
 
-  auto ref = resources::instance().texture_sources.add(resources::TextureSource(
-      std::move(texture)));
+  auto ref = resources::instance().texture_sources.add(
+      resources::TextureSource(std::move(texture)));
 
   if (!ref.has_value()) {
     return std::nullopt;
@@ -218,3 +201,30 @@ auto destroy_texture(TextureRef ref) -> void {
 }
 
 } // namespace bubble
+
+namespace bubble::resources {
+
+namespace singleton {
+static std::unique_ptr<Instance> ginstance{nullptr};
+}
+
+auto instance() -> Instance & { return *singleton::ginstance; }
+
+[[nodiscard]]
+auto initialize() -> bool {
+  singleton::ginstance = std::make_unique<Instance>();
+
+  return true;
+}
+
+auto destroy() -> void { singleton::ginstance = nullptr; }
+
+auto get(MeshRef ref) -> MeshSource * {
+  return instance().mesh_sources.get(Ref(ref.index(), ref.generation()));
+}
+
+auto get(TextureRef ref) -> TextureSource * {
+  return instance().texture_sources.get(Ref(ref.index(), ref.generation()));
+}
+
+} // namespace bubble::resources

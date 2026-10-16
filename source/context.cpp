@@ -349,7 +349,8 @@ auto initialize(InitializeInfo &info) -> bool {
   return true;
 }
 
-auto destroy() -> void { singleton::ginstance = nullptr; }
+auto destroy() -> void { 
+    singleton::ginstance = nullptr; }
 
 auto poll_events() -> void {
   auto events = std::vector<SDL_Event>{};
@@ -369,7 +370,7 @@ auto handle_events() -> void {
   }
 }
 
-auto next_frame() -> void {
+auto begin_frame() -> void {
   poll_events();
   handle_events();
 }
@@ -394,6 +395,16 @@ auto find_memory_type(
     LOG_ERROR("No memory type could be found");
   }
   return typeIndex;
+}
+
+auto device() -> vk::Device
+{
+    return instance().device.get();
+}
+
+auto physical_device() -> vk::PhysicalDevice
+{
+    return instance().physical_device;
 }
 
 } // namespace bubble::context
