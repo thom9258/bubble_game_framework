@@ -82,7 +82,7 @@ auto set_clearcolor(Color color) -> void;
 
 struct Camera {
     glm::vec3 position;
-    glm::vec3 target;
+    glm::vec3 forward;
     glm::vec3 up;
     float fov_y{glm::radians(45.0f)};
     float near{0.1f};
@@ -93,7 +93,7 @@ auto set_camera(Camera camera) -> void;
 
 auto begin_frame() -> void;
 
-auto deltatime() -> float;
+auto deltatime() -> std::optional<float>;
 
 auto end_frame() -> void;
 

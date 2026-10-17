@@ -51,9 +51,9 @@ auto draw_flatcolor(glm::mat4 location, MeshRef mesh, Color color) -> void {
     renderer::draw_flatcolor(location, mesh, color);
 }
 
-auto deltatime() -> float 
+auto deltatime() -> std::optional<float>
 {
-    return 0.16f;
+    return renderer::instance().deltatime;
 }
 
 } // namespace bubble

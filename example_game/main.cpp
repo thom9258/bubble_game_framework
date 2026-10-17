@@ -1,6 +1,7 @@
-#include "bubble/bitmap.hpp"
-#include <SDL_events.h>
+
+#include <bubble/bitmap.hpp>
 #include <bubble/bubble.hpp>
+#include <bubble/input.hpp>
 #include <bubble/timer.hpp>
 
 #include <bubble/internal/glm.hpp>
@@ -95,38 +96,37 @@ int main(int argc, char **argv) {
 
   auto camera = bubble::Camera{};
   camera.position = glm::vec3(0.0f, 0.0f, -3.0f);
-  camera.target = glm::vec3(0.0f, 0.0f, 0.0f);
-  camera.up = glm::vec3(0.0f, 1.0f, 3.0f);
+  camera.forward = glm::vec3(0.0f, 0.0f, 1.0f);
+  camera.up = glm::vec3(0.0f, 1.0f, 0.0f);
 
   const auto cube_location = glm::scale(glm::mat4(1.0f), glm::vec3(0.5f));
   const auto cube_color = bubble::color::ugly_pink;
 
-  auto strafe_direction = glm::vec3{0.0f};
+  auto button_q = bubble::input::Button(SDLK_q);
+  auto axis_x = bubble::input::Axis(SDLK_d, SDLK_a);
+  auto axis_z = bubble::input::Axis(SDLK_s, SDLK_w);
 
-  while (!bubble::requested_close()) {
+  auto should_run = true;
+  while (should_run) {
     bubble::begin_frame();
+    should_run = !bubble::requested_close();
+    const auto deltatime = bubble::deltatime().value_or(0.16f);
 
-    const auto events = bubble::get_sdl_events();
-    for (auto &event : events) {
-      if (event.type == SDL_KEYDOWN || event.type == SDL_KEYUP) {
-        SDL_Keycode key = event.key.keysym.sym;
-        if (key == SDLK_a && event.type == SDL_KEYDOWN) {
-          strafe_direction.x -= 1.0f;
-        }
-        if (key == SDLK_a && event.type == SDL_KEYUP) {
-          strafe_direction.x += 1.0f;
-        }
-        if (key == SDLK_d && event.type == SDL_KEYDOWN) {
-          strafe_direction.x += 1.0f;
-        }
-        if (key == SDLK_d && event.type == SDL_KEYUP) {
-          strafe_direction.x -= 1.0f;
-        }
-      }
+    button_q.update();
+    if (button_q.pressed()) {
+      should_run = false;
     }
 
-    camera.position += glm::normalize(strafe_direction * bubble::deltatime());
-     
+    axis_x.update();
+    axis_z.update();
+    const auto move_direction =
+        glm::normalize(glm::vec3(axis_x.value(), 0.0f, axis_z.value()));
+    if (glm::length(move_direction) > 0.1f) {
+      const auto move_speed = 2.0f;
+        camera.position +=
+            move_direction * deltatime * move_speed;
+    }
+
     bubble::set_camera(camera);
     bubble::draw_flatcolor(cube_location, *cube_mesh, cube_color);
     bubble::end_frame();

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bubble/internal/glm.hpp>
+#include <bubble/timer.hpp>
 
 #include "context.hpp"
 #include "task_graph.hpp"
@@ -25,6 +26,8 @@ struct MVP {
 };
 
 struct Instance {
+  Timer deltatime_timer;
+  std::optional<float> deltatime;
   Color clearcolor{255, 0, 0, 255};
   Camera camera{};
 

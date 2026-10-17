@@ -1,0 +1,12 @@
+* TODO
+
+Things needed to make a simple game for a gamejam (sort of sorted by importance):
+- [X] Graphics
+- [X] Input
+- [ ] Texture Rendering
+- [ ] Lights without shadowcasting
+- [ ] Model Loading
+- [ ] Physics
+- [ ] Sound Manager
+- [ ] Animated Models
+- [ ] 2D sprite rendering for UI

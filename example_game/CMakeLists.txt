@@ -23,6 +23,7 @@ set(SOURCES
     ../source/bitmap.cpp
     ../source/task_graph.cpp
     ../source/uniform_arena.cpp
+    ../source/input.cpp
 )
 
 add_executable(${PROJECT_NAME} main.cpp ${SOURCES})

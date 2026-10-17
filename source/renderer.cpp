@@ -684,6 +684,13 @@ auto initialize(InitializeInfo &info) -> bool {
 auto destroy() -> void { singleton::ginstance = nullptr; }
 
 auto begin_frame() -> void {
+  const auto duration = instance().deltatime_timer.stop();
+
+  if (duration.has_value()) {
+    instance().deltatime = duration.value().count();
+  }
+
+  instance().deltatime_timer.start();
   instance().renderbatches[instance().flightframe].drawcommands.clear();
 }
 
@@ -712,7 +719,8 @@ auto wait_for_next_frame() {
 
 auto view_matrix() -> glm::mat4 {
   const auto camera = instance().camera;
-  return glm::lookAt(camera.position, camera.target, camera.up);
+  const auto target = camera.position + camera.forward;
+  return glm::lookAt(camera.position, target, camera.up);
 }
 
 auto projection_matrix() -> glm::mat4 {
