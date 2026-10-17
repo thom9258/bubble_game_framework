@@ -12,6 +12,17 @@ struct Color {
   std::uint8_t a;
 };
 
+namespace color {
+
+inline constexpr const auto red = Color{255, 0, 0, 255};
+inline constexpr const auto green = Color{0, 255, 0, 255};
+inline constexpr const auto blue = Color{0, 0, 255, 255};
+inline constexpr const auto black = Color{0, 0, 0, 255};
+inline constexpr const auto white = Color{255, 255, 255, 255};
+inline constexpr const auto ugly_pink = Color{254, 1, 177, 255};
+inline constexpr const auto pleasant_blue = Color{56, 147, 193, 255};
+} // namespace color
+
 class Bitmap {
 public:
   Bitmap(std::uint32_t width, std::uint32_t height);

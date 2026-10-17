@@ -22,6 +22,7 @@ set(SOURCES
     ../source/texture.cpp
     ../source/bitmap.cpp
     ../source/task_graph.cpp
+    ../source/uniform_arena.cpp
 )
 
 add_executable(${PROJECT_NAME} main.cpp ${SOURCES})
@@ -37,4 +38,5 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
     ${Vulkan_LIBRARIES}
     ${SDL2_LIBRARIES}
+    glm::glm
 )

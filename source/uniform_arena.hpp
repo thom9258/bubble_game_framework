@@ -5,13 +5,18 @@
 namespace bubble
 {
 
+struct UniformArenaAllocation {
+    void* ptr{nullptr};
+    std::size_t dynamic_offset{0};
+};
+
 class UniformArena {
 public:
   UniformArena(std::size_t size);
   auto size() -> std::size_t;
   auto used() -> std::size_t;
   auto buffer() -> vk::Buffer;
-  auto allocate(std::size_t n) -> void*;
+  auto allocate(std::size_t n) -> std::optional<UniformArenaAllocation>;
   auto reset() -> void;
 
 private:

@@ -1,5 +1,9 @@
 #pragma once
 
+
+//TODO: we need to make a custom math wrapper at some point, but this is a cheat
+#include "internal/glm.hpp" 
+
 #include "bitmap.hpp"
 
 #include <cstdint>
@@ -49,7 +53,6 @@ public:
   MeshRef(std::uint32_t index, std::uint32_t generation);
   auto index() const -> std::uint32_t;
   auto generation() const -> std::uint32_t;
-
 private:
   std::uint32_t _index;
   std::uint32_t _generation;
@@ -77,12 +80,23 @@ auto destroy_texture(TextureRef ref) -> void;
 
 auto set_clearcolor(Color color) -> void;
 
+struct Camera {
+    glm::vec3 position;
+    glm::vec3 target;
+    glm::vec3 up;
+    float fov_y{glm::radians(45.0f)};
+    float near{0.1f};
+    float far{100.0f};
+};
+
+auto set_camera(Camera camera) -> void;
+
 auto begin_frame() -> void;
+
+auto deltatime() -> float;
 
 auto end_frame() -> void;
 
-auto draw_flatcolor(MeshRef mesh, Color color) -> void;
-
-//auto draw(TextureRef, MeshRef) -> void;
+auto draw_flatcolor(glm::mat4 location, MeshRef mesh, Color color) -> void;
 
 } // namespace bubble

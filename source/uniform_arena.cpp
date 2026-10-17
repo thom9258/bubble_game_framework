@@ -24,17 +24,20 @@ auto forward_align(std::size_t alignment, std::uintptr_t ptr)
   return (ptr + alignment - 1) & ~(alignment - 1);
 }
 
-auto UniformArena::allocate(std::size_t n) -> void * {
+auto UniformArena::allocate(std::size_t n)
+    -> std::optional<UniformArenaAllocation> {
   const auto allocation_start = forward_align(_alignment, _used);
   const auto allocation_end = allocation_start + n;
   if (allocation_end >= size()) {
-    return nullptr;
+    return std::nullopt;
   }
 
   _used = allocation_end;
-  const auto allocation_ptr =
-      reinterpret_cast<std::uintptr_t>(_buffer.ptr()) + allocation_start;
-  return reinterpret_cast<void *>(allocation_ptr);
+  auto allocation = UniformArenaAllocation{};
+  allocation.dynamic_offset = allocation_start;
+  allocation.ptr = reinterpret_cast<void *>(
+      reinterpret_cast<std::uintptr_t>(_buffer.ptr()) + allocation_start);
+  return allocation;
 }
 
 auto UniformArena::reset() -> void { _used = 0; }

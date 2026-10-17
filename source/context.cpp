@@ -191,6 +191,33 @@ auto initialize_surface() -> bool {
   return true;
 }
 
+auto log_physical_device(vk::PhysicalDevice physical_device) -> void {
+  const auto properties = physical_device.getProperties();
+  const auto limits = properties.limits;
+  LOG_INFO("{}:", properties.deviceName.data());
+  LOG_INFO("  Type: {}", vk::to_string(properties.deviceType));
+  LOG_INFO("  Max Sampler Anisotrophy: {}", limits.maxSamplerAnisotropy);
+  LOG_INFO("  Max Dynamic Uniform Buffers: {}",
+           limits.maxDescriptorSetUniformBuffersDynamic);
+  LOG_INFO("  Max Memory Allocation Count: {}",
+           limits.maxMemoryAllocationCount);
+
+  static constexpr const auto gb = std::size_t{1'000'000'000};
+
+  LOG_INFO("  Memory Heaps:");
+  const auto memory_properties = physical_device.getMemoryProperties();
+  for (std::size_t i = 0; i < memory_properties.memoryHeapCount; i++) {
+    const auto size_gb =
+        static_cast<double>(memory_properties.memoryHeaps[i].size) / gb;
+    LOG_INFO("    Heap[{}]: {}gb", i, size_gb);
+  }
+
+  for (std::size_t i = 0; i < memory_properties.memoryTypeCount; i++) {
+    LOG_INFO("    Type[{}]: {}", i,
+             vk::to_string(memory_properties.memoryTypes[i].propertyFlags));
+  }
+}
+
 auto initialize_physical_device() -> bool {
   std::uint32_t physical_device_count{0};
   vk::Result result = instance().instance.get().enumeratePhysicalDevices(
@@ -212,14 +239,15 @@ auto initialize_physical_device() -> bool {
 
   using score_t = std::optional<std::uint64_t>;
   std::vector<score_t> scores(physical_devices.size());
+  LOG_INFO("Physical Device Count: {}", physical_device_count);
   for (auto [i, physical_device] : physical_devices | std::views::enumerate) {
+    log_physical_device(physical_device);
     scores[i] = rate_physical_device(physical_device, instance().surface.get());
   }
 
   std::uint32_t best_score{0};
-  LOG_INFO("Physical Devices ({}):", physical_device_count);
+  LOG_INFO("Physical Device Scores:");
   for (auto [device, score] : std::views::zip(physical_devices, scores)) {
-
     if (!score.has_value())
       continue;
 
@@ -237,12 +265,8 @@ auto initialize_physical_device() -> bool {
     return false;
   }
 
-  {
-    vk::PhysicalDeviceProperties properties =
-        instance().physical_device.getProperties();
-    LOG_INFO("Chosen Physical Device: {}", properties.deviceName.data());
-  }
-
+  const auto properties = physical_device().getProperties();
+  LOG_INFO("Chosen Physical Device: '{}'", properties.deviceName.data());
   return true;
 }
 
@@ -349,8 +373,7 @@ auto initialize(InitializeInfo &info) -> bool {
   return true;
 }
 
-auto destroy() -> void { 
-    singleton::ginstance = nullptr; }
+auto destroy() -> void { singleton::ginstance = nullptr; }
 
 auto poll_events() -> void {
   auto events = std::vector<SDL_Event>{};
@@ -397,14 +420,18 @@ auto find_memory_type(
   return typeIndex;
 }
 
-auto device() -> vk::Device
-{
-    return instance().device.get();
-}
+auto device() -> vk::Device { return instance().device.get(); }
 
-auto physical_device() -> vk::PhysicalDevice
-{
-    return instance().physical_device;
+auto physical_device() -> vk::PhysicalDevice {
+  return instance().physical_device;
 }
 
 } // namespace bubble::context
+
+namespace bubble {
+
+auto get_sdl_events() -> std::vector<SDL_Event> {
+  return context::instance().events;
+}
+
+} // namespace bubble

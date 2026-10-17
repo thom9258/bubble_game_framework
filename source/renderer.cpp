@@ -5,8 +5,10 @@
 
 #include <filesystem>
 #include <fstream>
-#include <print>
 #include <ranges>
+#include <vulkan/vulkan_core.h>
+#include <vulkan/vulkan_enums.hpp>
+#include <vulkan/vulkan_structs.hpp>
 
 namespace bubble::renderer {
 
@@ -46,6 +48,23 @@ std::vector<std::uint32_t> read_spirv_source(std::filesystem::path path) {
             sizeof(buffer[0]) * buffer.size());
   file.close();
   return buffer;
+}
+
+auto initialize_rendergraphs() -> bool {
+  for (std::size_t i = 0; i < frames_in_flight; i++) {
+    instance().rendergraphs.push_back(TaskGraph{});
+  }
+
+  return true;
+}
+
+auto initialize_uniform_arenas() -> bool {
+  static constexpr const auto uniform_arena_size = 1024 * 10;
+  for (std::size_t i = 0; i < frames_in_flight; i++) {
+    instance().uniform_arenas.emplace_back(uniform_arena_size);
+  }
+
+  return true;
 }
 
 auto initialize_swapchain(InitializeInfo &info) -> bool {
@@ -566,22 +585,39 @@ auto initialize_flatcolor_pipe() -> bool {
   return true;
 }
 
-auto initialize_flatcolor_sets() -> bool { return true; }
-
-auto initialize_rendergraphs() -> bool {
+auto initialize_flatcolor_sets() -> bool {
+  instance().pipe.flatcolor.modelinfo_sets.resize(2);
+  std::vector<vk::WriteDescriptorSet> writes;
   for (std::size_t i = 0; i < frames_in_flight; i++) {
-    instance().rendergraphs.push_back(TaskGraph{});
+    const auto alloc_info =
+        vk::DescriptorSetAllocateInfo{}
+            .setDescriptorSetCount(1)
+            .setDescriptorPool(instance().pipe.pool.get())
+            .setSetLayouts(instance().pipe.flatcolor.modelinfo_layout.get())
+            .setDescriptorPool(instance().pipe.pool.get());
+
+    instance().pipe.flatcolor.modelinfo_sets[i] =
+        context::device().allocateDescriptorSets(alloc_info).front();
+
+    const auto buffer_info =
+        vk::DescriptorBufferInfo{}
+            .setBuffer(instance().uniform_arenas[i].buffer())
+            .setRange(sizeof(MVP))
+            .setOffset(0);
+
+    const auto write =
+        vk::WriteDescriptorSet{}
+            .setDescriptorType(vk::DescriptorType::eUniformBufferDynamic)
+            .setDstSet(instance().pipe.flatcolor.modelinfo_sets[i])
+            .setDstBinding(0)
+            .setDescriptorCount(1)
+            .setBufferInfo(buffer_info);
+
+    writes.push_back(write);
   }
 
-  return true;
-}
-
-auto initialize_uniform_arenas() -> bool {
-  static constexpr const auto uniform_arena_size = 1024 * 10;
-  for (std::size_t i = 0; i < frames_in_flight; i++) {
-    instance().uniform_arenas.emplace_back(uniform_arena_size);
-  }
-
+  context::device().updateDescriptorSets(writes.size(), writes.data(), 0,
+                                         nullptr);
   return true;
 }
 
@@ -593,6 +629,14 @@ auto initialize_renderbatches() -> bool {
 [[nodiscard]]
 auto initialize(InitializeInfo &info) -> bool {
   singleton::ginstance = std::make_unique<Instance>();
+
+  if (!initialize_rendergraphs()) {
+    return false;
+  }
+
+  if (!initialize_uniform_arenas()) {
+    return false;
+  }
 
   if (!initialize_swapchain(info)) {
     return false;
@@ -627,10 +671,6 @@ auto initialize(InitializeInfo &info) -> bool {
   }
 
   if (!initialize_flatcolor_sets()) {
-    return false;
-  }
-
-  if (!initialize_rendergraphs()) {
     return false;
   }
 
@@ -670,8 +710,26 @@ auto wait_for_next_frame() {
   instance().image_index = result.value;
 }
 
+auto view_matrix() -> glm::mat4 {
+  const auto camera = instance().camera;
+  return glm::lookAt(camera.position, camera.target, camera.up);
+}
+
+auto projection_matrix() -> glm::mat4 {
+  const auto camera = instance().camera;
+  const auto extent = instance().mainpass.extent;
+  float aspect =
+      static_cast<float>(extent.width) / static_cast<float>(extent.height);
+  glm::mat4 proj =
+      glm::perspective(camera.fov_y, aspect, camera.near, camera.far);
+  proj[1][1] *= -1.0f;
+  return proj;
+}
+
 auto end_frame() -> void {
   wait_for_next_frame();
+
+  instance().uniform_arenas[instance().flightframe].reset();
 
   const auto draw_task = TaskID{0};
   TaskGraph &rendergraph = instance().rendergraphs[instance().flightframe];
@@ -725,6 +783,8 @@ auto end_frame() -> void {
     for (auto &command : drawcommands) {
       auto *mesh = resources::get(command.mesh);
       if (!mesh) {
+
+        LOG_ERROR("Got invalid mesh in draw commands");
         continue;
       }
 
@@ -738,6 +798,38 @@ auto end_frame() -> void {
         vk::DeviceSize offset = 0;
         vk::Buffer buffer = mesh->indices.buffer();
         commandbuffer.bindIndexBuffer(buffer, offset, vk::IndexType::eUint32);
+      }
+
+      {
+        auto mvp = MVP{};
+        mvp.model = command.location;
+        mvp.view = view_matrix();
+        mvp.color = glm::vec3{static_cast<float>(command.color.r) / 255,
+                              static_cast<float>(command.color.g) / 255,
+                              static_cast<float>(command.color.b) / 255};
+        mvp.projection = projection_matrix();
+
+        auto allocation =
+            instance().uniform_arenas[instance().flightframe].allocate(
+                sizeof(mvp));
+        if (!allocation.has_value()) {
+          LOG_ERROR("Ran out of uniform arena memory");
+          continue;
+        }
+
+        std::memcpy(allocation->ptr, &mvp, sizeof(mvp));
+
+        const auto layout = instance().pipe.flatcolor.layout.get();
+        const auto first_set = std::uint32_t{0};
+        const auto sets = std::array{
+            instance().pipe.flatcolor.modelinfo_sets[instance().flightframe]};
+        const auto dynamic_offsets =
+            std::array{static_cast<std::uint32_t>(allocation->dynamic_offset)};
+        commandbuffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics, layout, first_set,
+            static_cast<std::uint32_t>(sets.size()), sets.data(),
+            static_cast<std::uint32_t>(dynamic_offsets.size()),
+            dynamic_offsets.data());
       }
 
       commandbuffer.drawIndexed(mesh->indices_count, 1, 0, 0, 0);
@@ -911,9 +1003,11 @@ auto end_frame() -> void {
 
 auto set_clearcolor(Color color) -> void { instance().clearcolor = color; }
 
-auto draw_flatcolor(MeshRef mesh, Color color) -> void {
+auto set_camera(Camera camera) -> void { instance().camera = camera; }
+
+auto draw_flatcolor(glm::mat4 location, MeshRef mesh, Color color) -> void {
   instance().renderbatches[instance().flightframe].drawcommands.emplace_back(
-      mesh, color);
+      location, mesh, color);
 }
 
 } // namespace bubble::renderer
