@@ -1,8 +1,8 @@
 #pragma once
 
-
-//TODO: we need to make a custom math wrapper at some point, but this is a cheat
-#include "internal/glm.hpp" 
+// TODO: we need to make a custom math wrapper at some point, but this is a
+// cheat
+#include "internal/glm.hpp"
 
 #include "bitmap.hpp"
 
@@ -53,6 +53,7 @@ public:
   MeshRef(std::uint32_t index, std::uint32_t generation);
   auto index() const -> std::uint32_t;
   auto generation() const -> std::uint32_t;
+
 private:
   std::uint32_t _index;
   std::uint32_t _generation;
@@ -81,13 +82,46 @@ auto destroy_texture(TextureRef ref) -> void;
 auto set_clearcolor(Color color) -> void;
 
 struct Camera {
-    glm::vec3 position;
-    glm::vec3 forward;
-    glm::vec3 up;
-    float fov_y{glm::radians(45.0f)};
-    float near{0.1f};
-    float far{100.0f};
+  glm::vec3 position;
+  glm::vec3 forward;
+  glm::vec3 up;
+  float fov_y{glm::radians(45.0f)};
+  float near{0.1f};
+  float far{100.0f};
 };
+
+struct HemisphereLight {
+  Color color;
+  Color sky;
+  float intensity;
+};
+
+struct DirectionalLight {
+  glm::vec3 direction;
+  Color color;
+  float intensity;
+};
+
+struct PointLight {
+  glm::vec3 position;
+  Color color;
+  float intensity;
+};
+
+struct SpotLight {
+  glm::vec3 position;
+  glm::vec3 direction;
+  Color color;
+  float intensity;
+};
+
+auto add_light(HemisphereLight light);
+
+auto add_light(DirectionalLight light);
+
+auto add_light(PointLight light);
+
+auto add_light(SpotLight light);
 
 auto set_camera(Camera camera) -> void;
 
