@@ -93,7 +93,9 @@ public:
   [[nodiscard]]
   auto right_held() const -> bool;
 
-  auto set_locked(bool should_lock) -> void;
+  auto lock() -> void;
+
+  auto unlock() -> void;
 
   [[nodiscard]]
   auto locked() const -> bool;

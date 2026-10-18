@@ -134,10 +134,10 @@ int main(int argc, char **argv) {
                  glm::to_string(mouse.move_delta()),
                  mouse.locked());
     if (mouse.left_pressed()) {
-        mouse.set_locked(true);
+        mouse.lock();
     }
     if (mouse.right_pressed()) {
-        mouse.set_locked(false);
+        mouse.unlock();
     }
 
     bubble::set_camera(camera);
