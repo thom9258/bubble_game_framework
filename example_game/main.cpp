@@ -106,6 +106,8 @@ int main(int argc, char **argv) {
   auto axis_x = bubble::input::Axis(SDLK_d, SDLK_a);
   auto axis_z = bubble::input::Axis(SDLK_s, SDLK_w);
 
+  auto mouse = bubble::input::Mouse();
+
   auto should_run = true;
   while (should_run) {
     bubble::begin_frame();
@@ -123,9 +125,14 @@ int main(int argc, char **argv) {
         glm::normalize(glm::vec3(axis_x.value(), 0.0f, axis_z.value()));
     if (glm::length(move_direction) > 0.1f) {
       const auto move_speed = 2.0f;
-        camera.position +=
-            move_direction * deltatime * move_speed;
+      camera.position += move_direction * deltatime * move_speed;
     }
+
+    mouse.update();
+    std::println("mouse pos: {}, mouse delta: {} mouse left held: {}",
+                 glm::to_string(mouse.position()),
+                 glm::to_string(mouse.move_delta()),
+                 mouse.left_held());
 
     bubble::set_camera(camera);
     bubble::draw_flatcolor(cube_location, *cube_mesh, cube_color);
