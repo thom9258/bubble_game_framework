@@ -100,6 +100,9 @@ public:
   [[nodiscard]]
   auto locked() const -> bool;
 
+  auto center_mouse_position() -> void;
+
+
 private:
   bool _locked{false};
   glm::ivec2 _move_delta{};

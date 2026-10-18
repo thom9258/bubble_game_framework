@@ -1,4 +1,3 @@
-
 #include <bubble/bitmap.hpp>
 #include <bubble/bubble.hpp>
 #include <bubble/input.hpp>
@@ -13,55 +12,39 @@ std::pair<std::vector<bubble::Vertex>, std::vector<bubble::Index>>
 generateIndexedCube() {
 
   std::vector<bubble::Vertex> vertices = {
-      // --- FORSIDE (+Z) --- Normal: [0, 0, 1]
-      {{-0.5f, -0.5f, 0.5f},
-       {0.0f, 0.0f, 1.0f},
-       {0.0f, 1.0f}}, // Nederst venstre
-      {{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}}, // Nederst højre
-      {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},  // Øverst højre
-      {{-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}}, // Øverst venstre
+      {{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+      {{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+      {{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+      {{-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
 
-      // --- BAGSIDE (-Z) --- Normal: [0, 0, -1]
       {{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}},
       {{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
       {{-0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}},
       {{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
 
-      // --- VENSTRE SIDE (-X) --- Normal: [-1, 0, 0]
       {{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
       {{-0.5f, -0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
       {{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
       {{-0.5f, 0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
 
-      // --- HØJRE SIDE (+X) --- Normal: [1, 0, 0]
       {{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
       {{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
       {{0.5f, 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
       {{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
 
-      // --- TOP (+Y) --- Normal: [0, 1, 0]
       {{-0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
       {{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
       {{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
       {{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
 
-      // --- BUND (-Y) --- Normal: [0, -1, 0]
       {{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
       {{0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
       {{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
       {{-0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}}};
 
-  // Index-rækkefølgen (Clockwise / Counter-Clockwise afhænger af dit Vulkan
-  // FrontFace setup) Dette layout følger standard CCW (Counter-Clockwise)
-  // winding order set udefra.
   std::vector<bubble::Index> indices = {
-      0,  1,  2,  2,  3,  0,  // Forside
-      4,  5,  6,  6,  7,  4,  // Bagside
-      8,  9,  10, 10, 11, 8,  // Venstre
-      12, 13, 14, 14, 15, 12, // Højre
-      16, 17, 18, 18, 19, 16, // Top
-      20, 21, 22, 22, 23, 20  // Bund
-  };
+      0,  1,  2,  2,  3,  0,  4,  5,  6,  6,  7,  4,  8,  9,  10, 10, 11, 8,
+      12, 13, 14, 14, 15, 12, 16, 17, 18, 18, 19, 16, 20, 21, 22, 22, 23, 20};
 
   return {vertices, indices};
 }
@@ -121,23 +104,20 @@ int main(int argc, char **argv) {
 
     axis_x.update();
     axis_z.update();
+
+    mouse.update();
+    if (mouse.right_pressed()) {
+      mouse.lock();
+    }
+    if (mouse.right_released()) {
+      mouse.unlock();
+    }
+
     const auto move_direction =
         glm::normalize(glm::vec3(axis_x.value(), 0.0f, axis_z.value()));
     if (glm::length(move_direction) > 0.1f) {
       const auto move_speed = 2.0f;
       camera.position += move_direction * deltatime * move_speed;
-    }
-
-    mouse.update();
-    std::println("mouse pos: {}, mouse delta: {} mouse locked: {}",
-                 glm::to_string(mouse.position()),
-                 glm::to_string(mouse.move_delta()),
-                 mouse.locked());
-    if (mouse.left_pressed()) {
-        mouse.lock();
-    }
-    if (mouse.right_pressed()) {
-        mouse.unlock();
     }
 
     bubble::set_camera(camera);

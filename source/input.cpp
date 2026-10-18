@@ -1,9 +1,6 @@
-#include <SDL_keycode.h>
 #include <bubble/input.hpp>
 
-#include "bubble/internal/sdl.hpp"
-
-#include <SDL2/SDL_mouse.h>
+#include "context.hpp"
 
 namespace bubble::input {
 
@@ -98,6 +95,17 @@ auto Mouse::update() -> void {
       }
     }
   }
+
+  if (locked()) {
+    center_mouse_position();
+  }
+}
+
+auto Mouse::center_mouse_position() -> void {
+  int width, height;
+  SDL_GetWindowSize(context::instance().window.get(), &width, &height);
+  _position = glm::ivec2(width / 2, height / 2);
+  SDL_WarpMouseInWindow(context::instance().window.get(), _position.x, _position.y);
 }
 
 auto Mouse::position() -> glm::ivec2 { return _position; }
