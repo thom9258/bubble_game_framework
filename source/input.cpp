@@ -116,4 +116,11 @@ auto Mouse::right_released() const -> bool { return _right.released(); }
 
 auto Mouse::right_held() const -> bool { return _right.held(); }
 
+auto Mouse::set_locked(bool should_lock) -> void {
+  _locked = should_lock;
+  SDL_SetRelativeMouseMode(_locked ? SDL_TRUE : SDL_FALSE);
+}
+
+auto Mouse::locked() const -> bool { return _locked; }
+
 } // namespace bubble::input

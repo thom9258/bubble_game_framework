@@ -93,12 +93,13 @@ public:
   [[nodiscard]]
   auto right_held() const -> bool;
 
-// auto enable_hide_and_lock() -> void;
-//
-// auto disable_hide_and_lock() -> void;
+  auto set_locked(bool should_lock) -> void;
+
+  [[nodiscard]]
+  auto locked() const -> bool;
 
 private:
-  bool _hide_and_lock{false};
+  bool _locked{false};
   glm::ivec2 _move_delta{};
   glm::ivec2 _position{};
   ButtonState _left;

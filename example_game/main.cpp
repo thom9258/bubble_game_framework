@@ -129,10 +129,16 @@ int main(int argc, char **argv) {
     }
 
     mouse.update();
-    std::println("mouse pos: {}, mouse delta: {} mouse left held: {}",
+    std::println("mouse pos: {}, mouse delta: {} mouse locked: {}",
                  glm::to_string(mouse.position()),
                  glm::to_string(mouse.move_delta()),
-                 mouse.left_held());
+                 mouse.locked());
+    if (mouse.left_pressed()) {
+        mouse.set_locked(true);
+    }
+    if (mouse.right_pressed()) {
+        mouse.set_locked(false);
+    }
 
     bubble::set_camera(camera);
     bubble::draw_flatcolor(cube_location, *cube_mesh, cube_color);
