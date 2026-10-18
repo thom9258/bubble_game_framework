@@ -77,15 +77,12 @@ int main(int argc, char **argv) {
 
   bubble::set_clearcolor(bubble::color::pleasant_blue);
 
-  auto camera = bubble::Camera{};
-  camera.position = glm::vec3(0.0f, 0.0f, -3.0f);
-  camera.forward = glm::vec3(0.0f, 0.0f, 1.0f);
-  camera.up = glm::vec3(0.0f, 1.0f, 0.0f);
+  auto camera =
+      bubble::Camera(glm::vec3(0.0f, 0.0f, -3.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
   const auto cube_location = glm::scale(glm::mat4(1.0f), glm::vec3(0.5f));
   const auto cube_color = bubble::color::ugly_pink;
 
-  auto button_q = bubble::input::Button(SDLK_q);
   auto axis_x = bubble::input::Axis(SDLK_d, SDLK_a);
   auto axis_z = bubble::input::Axis(SDLK_s, SDLK_w);
 
@@ -97,27 +94,29 @@ int main(int argc, char **argv) {
     should_run = !bubble::requested_close();
     const auto deltatime = bubble::deltatime().value_or(0.16f);
 
-    button_q.update();
-    if (button_q.pressed()) {
-      should_run = false;
-    }
-
-    axis_x.update();
-    axis_z.update();
-
     mouse.update();
+
     if (mouse.right_pressed()) {
       mouse.lock();
     }
     if (mouse.right_released()) {
       mouse.unlock();
     }
+    if (mouse.locked()) {
+      const auto mouse_delta = mouse.move_delta();
+      const auto rotate_speed = 0.045f;
+      const auto rotation = glm::vec2(static_cast<float>(mouse_delta.x),
+                                      static_cast<float>(mouse_delta.y));
+      camera.rotate(rotation * rotate_speed * deltatime);
+    }
 
+    axis_x.update();
+    axis_z.update();
     const auto move_direction =
         glm::normalize(glm::vec3(axis_x.value(), 0.0f, axis_z.value()));
     if (glm::length(move_direction) > 0.1f) {
       const auto move_speed = 2.0f;
-      camera.position += move_direction * deltatime * move_speed;
+      camera.translate_local(move_direction * deltatime * move_speed);
     }
 
     bubble::set_camera(camera);

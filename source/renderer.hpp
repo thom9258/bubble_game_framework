@@ -29,7 +29,7 @@ struct Instance {
   Timer deltatime_timer;
   std::optional<float> deltatime;
   Color clearcolor{255, 0, 0, 255};
-  Camera camera{};
+  Camera camera{glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f)};
 
   std::vector<TaskGraph> rendergraphs;
   std::vector<UniformArena> uniform_arenas;

@@ -719,8 +719,8 @@ auto wait_for_next_frame() {
 
 auto view_matrix() -> glm::mat4 {
   const auto camera = instance().camera;
-  const auto target = camera.position + camera.forward;
-  return glm::lookAt(camera.position, target, camera.up);
+  const auto target = camera.position() + camera.forward();
+  return glm::lookAt(camera.position(), target, camera.up());
 }
 
 auto projection_matrix() -> glm::mat4 {
@@ -729,7 +729,7 @@ auto projection_matrix() -> glm::mat4 {
   float aspect =
       static_cast<float>(extent.width) / static_cast<float>(extent.height);
   glm::mat4 proj =
-      glm::perspective(camera.fov_y, aspect, camera.near, camera.far);
+      glm::perspective(camera.fov_y(), aspect, camera.near(), camera.far());
   proj[1][1] *= -1.0f;
   return proj;
 }

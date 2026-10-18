@@ -81,13 +81,41 @@ auto destroy_texture(TextureRef ref) -> void;
 
 auto set_clearcolor(Color color) -> void;
 
-struct Camera {
-  glm::vec3 position;
-  glm::vec3 forward;
-  glm::vec3 up;
-  float fov_y{glm::radians(45.0f)};
-  float near{0.1f};
-  float far{100.0f};
+class Camera {
+public:
+  Camera(glm::vec3 position, glm::vec3 forward);
+
+  auto translate_global(glm::vec3 delta) -> void;
+
+  auto translate_local(glm::vec3 delta) -> void;
+
+  auto rotate(glm::vec2 delta) -> void;
+
+  [[nodiscard]]
+  auto position() const -> glm::vec3;
+
+  [[nodiscard]]
+  auto forward() const -> glm::vec3;
+
+  [[nodiscard]]
+  auto up() const -> glm::vec3;
+
+  [[nodiscard]]
+  auto fov_y() const -> float;
+
+  [[nodiscard]]
+  auto near() const -> float;
+
+  [[nodiscard]]
+  auto far() const -> float;
+
+private:
+  glm::vec3 _position{glm::vec3(0.0f, 0.0f, 0.0f)};
+  glm::vec3 _forward{glm::vec3(0.0f, 0.0f, 1.0f)};
+  glm::vec3 _up{glm::vec3(0.0f, 1.0f, 0.0f)};
+  float _fov_y{glm::radians(45.0f)};
+  float _near{0.1f};
+  float _far{100.0f};
 };
 
 struct HemisphereLight {
