@@ -83,6 +83,7 @@ int main(int argc, char **argv) {
   const auto cube_location = glm::scale(glm::mat4(1.0f), glm::vec3(0.5f));
   const auto cube_color = bubble::color::ugly_pink;
 
+  auto button_focus = bubble::input::Button(SDLK_f);
   auto axis_x = bubble::input::Axis(SDLK_d, SDLK_a);
   auto axis_z = bubble::input::Axis(SDLK_s, SDLK_w);
 
@@ -108,6 +109,11 @@ int main(int argc, char **argv) {
       const auto rotation = glm::vec2(static_cast<float>(mouse_delta.x),
                                       static_cast<float>(mouse_delta.y));
       camera.rotate(rotation * rotate_speed * deltatime);
+    }
+
+    button_focus.update();
+    if (button_focus.pressed()) {
+      camera.look_at(glm::vec3(0.0f));
     }
 
     axis_x.update();

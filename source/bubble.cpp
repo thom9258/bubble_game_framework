@@ -76,6 +76,13 @@ auto Camera::rotate(glm::vec2 delta) -> void {
   _forward = glm::normalize(new_forward);
 }
 
+auto Camera::look_at(glm::vec3 target) -> void {
+  const auto direction = target - _position;
+  if (glm::length(direction) > 0.0001f) {
+    _forward = glm::normalize(direction);
+  }
+}
+
 auto Camera::position() const -> glm::vec3 { return _position; }
 
 auto Camera::forward() const -> glm::vec3 { return _forward; }

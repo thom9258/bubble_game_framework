@@ -91,6 +91,8 @@ public:
 
   auto rotate(glm::vec2 delta) -> void;
 
+  auto look_at(glm::vec3 target) -> void;
+
   [[nodiscard]]
   auto position() const -> glm::vec3;
 
