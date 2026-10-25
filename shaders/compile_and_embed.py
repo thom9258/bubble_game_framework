@@ -91,5 +91,3 @@ with open(output_header, "w", encoding="utf-8") as f:
     
     f.write("}\n")
 
-print(f"Successfully baked {input_glsl} into {output_header}")
-
