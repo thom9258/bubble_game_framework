@@ -48,10 +48,7 @@ function(compile_and_embed_shader SHADER_FILENAME VAR_NAME OUTPUT_HEADER_NAME)
         VERBATIM
     )
 
-    # Fortæl dit IDE og build-system at filen genereres dynamisk
     set_source_files_properties(${HEADER_FILE} PROPERTIES GENERATED TRUE)
-
-    # Markér de genererede filer som nødvendige for at bygge projektet
     target_sources(${PROJECT_NAME} PRIVATE ${HEADER_FILE})
 endfunction()
 
@@ -74,7 +71,8 @@ target_link_libraries(${PROJECT_NAME}
     PRIVATE
     ${Vulkan_LIBRARIES}
     ${SDL2_LIBRARIES}
+
+    PUBLIC
     glm::glm
 )
-
 
