@@ -47,6 +47,10 @@ auto draw_flatcolor(glm::mat4 location, MeshRef mesh, Color color) -> void {
   renderer::draw_flatcolor(location, mesh, color);
 }
 
+auto draw_textured(glm::mat4 location, MeshRef mesh, TextureRef texture) -> void {
+  renderer::draw_textured(location, mesh, texture);
+}
+
 auto deltatime() -> std::optional<float> {
   return renderer::instance().deltatime;
 }

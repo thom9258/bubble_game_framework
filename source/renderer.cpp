@@ -1,5 +1,6 @@
 #include "renderer.hpp"
 #include "context.hpp"
+#include "flat_sorted_set.hpp"
 #include "resources.hpp"
 #include "uniform_arena.hpp"
 
@@ -602,7 +603,7 @@ auto initialize_flatcolor_sets() -> bool {
     const auto buffer_info =
         vk::DescriptorBufferInfo{}
             .setBuffer(instance().uniform_arenas[i].buffer())
-            .setRange(sizeof(MVP))
+            .setRange(sizeof(FlatColorUniform))
             .setOffset(0);
 
     const auto write =
@@ -621,8 +622,283 @@ auto initialize_flatcolor_sets() -> bool {
   return true;
 }
 
-auto initialize_renderbatches() -> bool {
-  instance().renderbatches.resize(frames_in_flight);
+auto initialize_texture_pipe() -> bool {
+  const auto vertex_path = std::filesystem::path("texture.vert.spv");
+  auto vertex_source = read_spirv_source(vertex_path);
+  if (vertex_source.empty()) {
+    LOG_ERROR("Could not read shader '{}'", vertex_path.string());
+    return false;
+  }
+
+  const auto fragment_path = std::filesystem::path("texture.frag.spv");
+  auto fragment_source = read_spirv_source(fragment_path);
+  if (fragment_source.empty()) {
+    LOG_ERROR("Could not read shader '{}'", fragment_path.string());
+    return false;
+  }
+
+  const auto vertex_module_info = vk::ShaderModuleCreateInfo{}
+                                      .setFlags(vk::ShaderModuleCreateFlags())
+                                      .setCode(vertex_source);
+
+  const auto fragment_module_info = vk::ShaderModuleCreateInfo{}
+                                        .setFlags(vk::ShaderModuleCreateFlags())
+                                        .setCode(fragment_source);
+
+  auto vertex_module =
+      context::device().createShaderModuleUnique(vertex_module_info);
+  auto fragment_module =
+      context::device().createShaderModuleUnique(fragment_module_info);
+
+  const auto shaderstage_infos =
+      std::array{vk::PipelineShaderStageCreateInfo{}
+                     .setStage(vk::ShaderStageFlagBits::eVertex)
+                     .setFlags(vk::PipelineShaderStageCreateFlags())
+                     .setModule(vertex_module.get())
+                     .setPName("main"),
+                 vk::PipelineShaderStageCreateInfo{}
+                     .setStage(vk::ShaderStageFlagBits::eFragment)
+                     .setFlags(vk::PipelineShaderStageCreateFlags())
+                     .setModule(fragment_module.get())
+                     .setPName("main")};
+
+  const auto dynamic_states =
+      std::array{vk::DynamicState::eViewport, vk::DynamicState::eScissor};
+
+  const auto dynamic_state_info =
+      vk::PipelineDynamicStateCreateInfo{}.setDynamicStates(dynamic_states);
+
+  const auto vertex_bindings =
+      std::array{vk::VertexInputBindingDescription{}
+                     .setBinding(0)
+                     .setStride(sizeof(Vertex))
+                     .setInputRate(vk::VertexInputRate::eVertex)};
+
+  const auto vertex_attributes =
+      std::array{vk::VertexInputAttributeDescription{}
+                     .setBinding(0)
+                     .setLocation(0)
+                     .setFormat(vk::Format::eR32G32B32Sfloat)
+                     .setOffset(offsetof(Vertex, position)),
+                 vk::VertexInputAttributeDescription{}
+                     .setBinding(0)
+                     .setLocation(1)
+                     .setFormat(vk::Format::eR32G32B32Sfloat)
+                     .setOffset(offsetof(Vertex, normal)),
+                 vk::VertexInputAttributeDescription{}
+                     .setBinding(0)
+                     .setLocation(2)
+                     .setFormat(vk::Format::eR32G32Sfloat)
+                     .setOffset(offsetof(Vertex, texture_coordinate))};
+
+  const auto vertex_input_state_info =
+      vk::PipelineVertexInputStateCreateInfo{}
+          .setFlags(vk::PipelineVertexInputStateCreateFlags())
+          .setVertexBindingDescriptions(vertex_bindings)
+          .setVertexAttributeDescriptions(vertex_attributes);
+
+  const auto input_assembly_state_info =
+      vk::PipelineInputAssemblyStateCreateInfo{}
+          .setFlags(vk::PipelineInputAssemblyStateCreateFlags())
+          .setPrimitiveRestartEnable(vk::False)
+          .setTopology(vk::PrimitiveTopology::eTriangleList);
+
+  const auto initial_viewport =
+      vk::Viewport{}
+          .setX(0.0f)
+          .setY(0.0f)
+          .setWidth(static_cast<float>(instance().mainpass.extent.width))
+          .setHeight(static_cast<float>(instance().mainpass.extent.height))
+          .setMinDepth(0.0f)
+          .setMaxDepth(1.0f);
+
+  const auto initial_scissor =
+      vk::Rect2D{}.setOffset(vk::Offset2D{}.setX(0.0f).setY(0.0f));
+
+  const auto viewport_state_info =
+      vk::PipelineViewportStateCreateInfo{}
+          .setFlags(vk::PipelineViewportStateCreateFlags())
+          .setViewports(initial_viewport)
+          .setScissors(initial_scissor);
+
+  const auto rasterization_state_info =
+      vk::PipelineRasterizationStateCreateInfo{}
+          .setFlags(vk::PipelineRasterizationStateCreateFlags())
+          .setDepthClampEnable(false)
+          .setRasterizerDiscardEnable(false)
+          .setPolygonMode(vk::PolygonMode::eFill)
+          .setCullMode(vk::CullModeFlagBits::eBack)
+          .setFrontFace(vk::FrontFace::eCounterClockwise)
+          .setDepthBiasEnable(false)
+          .setDepthBiasConstantFactor(0.0f)
+          .setDepthBiasClamp(0.0f)
+          .setDepthBiasSlopeFactor(0.0f)
+          .setLineWidth(1.0f);
+
+  auto multisample_state_info =
+      vk::PipelineMultisampleStateCreateInfo{}
+          .setFlags(vk::PipelineMultisampleStateCreateFlags())
+          .setSampleShadingEnable(false)
+          .setRasterizationSamples(vk::SampleCountFlagBits::e1);
+
+  const auto color_component_flags =
+      vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+      vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+
+  auto color_blend_attachment_state =
+      vk::PipelineColorBlendAttachmentState{}
+          .setBlendEnable(false)
+          .setSrcColorBlendFactor(vk::BlendFactor::eOne)
+          .setDstColorBlendFactor(vk::BlendFactor::eZero)
+          .setColorBlendOp(vk::BlendOp::eAdd)
+          .setSrcAlphaBlendFactor(vk::BlendFactor::eOne)
+          .setDstAlphaBlendFactor(vk::BlendFactor::eZero)
+          .setAlphaBlendOp(vk::BlendOp::eAdd)
+          .setColorWriteMask(color_component_flags);
+
+  auto color_blend_state_info =
+      vk::PipelineColorBlendStateCreateInfo{}
+          .setFlags(vk::PipelineColorBlendStateCreateFlags())
+          .setLogicOpEnable(false)
+          .setLogicOp(vk::LogicOp::eNoOp)
+          .setAttachments(color_blend_attachment_state)
+          .setBlendConstants({1.0f, 1.0f, 1.0f, 1.0f});
+
+  const auto modelinfo_bindings = std::array{
+      vk::DescriptorSetLayoutBinding{}
+          .setStageFlags(vk::ShaderStageFlagBits::eVertex)
+          .setDescriptorType(vk::DescriptorType::eUniformBufferDynamic)
+          .setBinding(0)
+          .setDescriptorCount(1),
+  };
+
+  const auto modelinfo_layout_info =
+      vk::DescriptorSetLayoutCreateInfo{}
+          .setFlags(vk::DescriptorSetLayoutCreateFlags())
+          .setBindings(modelinfo_bindings);
+
+  instance().pipe.texture.modelinfo_layout =
+      context::device().createDescriptorSetLayoutUnique(modelinfo_layout_info,
+                                                        nullptr);
+
+  const auto diffuse_bindings = std::array{
+      vk::DescriptorSetLayoutBinding{}
+          .setStageFlags(vk::ShaderStageFlagBits::eFragment)
+          .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+          .setBinding(0)
+          .setDescriptorCount(1),
+  };
+
+  const auto diffuse_layout_info =
+      vk::DescriptorSetLayoutCreateInfo{}
+          .setFlags(vk::DescriptorSetLayoutCreateFlags())
+          .setBindings(diffuse_bindings);
+
+  instance().pipe.texture.diffuse_layout =
+      context::device().createDescriptorSetLayoutUnique(diffuse_layout_info,
+                                                        nullptr);
+
+  const auto set_layouts =
+      std::array{instance().pipe.texture.modelinfo_layout.get(),
+                 instance().pipe.texture.diffuse_layout.get()};
+
+  const auto layout_info = vk::PipelineLayoutCreateInfo{}
+                               .setFlags(vk::PipelineLayoutCreateFlags())
+                               .setSetLayouts(set_layouts);
+
+  instance().pipe.texture.layout =
+      context::device().createPipelineLayoutUnique(layout_info, nullptr);
+
+  auto depth_stencil_state_info = vk::PipelineDepthStencilStateCreateInfo{}
+                                      .setDepthTestEnable(true)
+                                      .setDepthWriteEnable(true)
+                                      .setDepthCompareOp(vk::CompareOp::eLess)
+                                      .setDepthBoundsTestEnable(false)
+                                      .setMinDepthBounds(0.0f)
+                                      .setMaxDepthBounds(1.0f)
+                                      .setStencilTestEnable(false);
+
+  auto pipeline_info = vk::GraphicsPipelineCreateInfo{}
+                           .setFlags(vk::PipelineCreateFlags())
+                           .setStages(shaderstage_infos)
+                           .setPVertexInputState(&vertex_input_state_info)
+                           .setPInputAssemblyState(&input_assembly_state_info)
+                           .setPTessellationState(nullptr)
+                           .setPViewportState(&viewport_state_info)
+                           .setPRasterizationState(&rasterization_state_info)
+                           .setPMultisampleState(&multisample_state_info)
+                           .setPDepthStencilState(&depth_stencil_state_info)
+                           .setPColorBlendState(&color_blend_state_info)
+                           .setPDynamicState(&dynamic_state_info)
+                           .setLayout(instance().pipe.texture.layout.get())
+                           .setRenderPass(instance().mainpass.renderpass.get());
+
+  auto result =
+      context::device().createGraphicsPipelineUnique(nullptr, pipeline_info);
+
+  if (result.result != vk::Result::eSuccess) {
+    LOG_ERROR("Could not create graphics pipeline");
+    return false;
+  }
+
+  instance().pipe.texture.pipeline = std::move(result.value);
+  return true;
+}
+
+auto initialize_texture_sets() -> bool {
+  instance().pipe.texture.modelinfo_sets.resize(2);
+  std::vector<vk::WriteDescriptorSet> writes;
+  for (std::size_t i = 0; i < frames_in_flight; i++) {
+    const auto alloc_info =
+        vk::DescriptorSetAllocateInfo{}
+            .setDescriptorSetCount(1)
+            .setDescriptorPool(instance().pipe.pool.get())
+            .setSetLayouts(instance().pipe.texture.modelinfo_layout.get())
+            .setDescriptorPool(instance().pipe.pool.get());
+
+    instance().pipe.texture.modelinfo_sets[i] =
+        context::device().allocateDescriptorSets(alloc_info).front();
+
+    const auto buffer_info =
+        vk::DescriptorBufferInfo{}
+            .setBuffer(instance().uniform_arenas[i].buffer())
+            .setRange(sizeof(TextureUniform))
+            .setOffset(0);
+
+    const auto write =
+        vk::WriteDescriptorSet{}
+            .setDescriptorType(vk::DescriptorType::eUniformBufferDynamic)
+            .setDstSet(instance().pipe.texture.modelinfo_sets[i])
+            .setDstBinding(0)
+            .setDescriptorCount(1)
+            .setBufferInfo(buffer_info);
+
+    writes.push_back(write);
+  }
+
+  context::device().updateDescriptorSets(writes.size(), writes.data(), 0,
+                                         nullptr);
+  return true;
+}
+
+auto initialize_frames() -> bool {
+  instance().frames.resize(frames_in_flight);
+
+  const auto diffuse_sets_count = 100;
+  const auto sizes =
+      std::array{vk::DescriptorPoolSize{}
+                     .setDescriptorCount(diffuse_sets_count)
+                     .setType(vk::DescriptorType::eCombinedImageSampler)};
+
+  const auto pool_info =
+      vk::DescriptorPoolCreateInfo{}.setPoolSizes(sizes).setMaxSets(
+          diffuse_sets_count);
+
+  for (auto &frame : instance().frames) {
+    frame.diffuse_pool =
+        context::device().createDescriptorPoolUnique(pool_info);
+  }
+
   return true;
 }
 
@@ -674,7 +950,15 @@ auto initialize(InitializeInfo &info) -> bool {
     return false;
   }
 
-  if (!initialize_renderbatches()) {
+  if (!initialize_texture_pipe()) {
+    return false;
+  }
+
+  if (!initialize_texture_sets()) {
+    return false;
+  }
+
+  if (!initialize_frames()) {
     return false;
   }
 
@@ -683,18 +967,7 @@ auto initialize(InitializeInfo &info) -> bool {
 
 auto destroy() -> void { singleton::ginstance = nullptr; }
 
-auto begin_frame() -> void {
-  const auto duration = instance().deltatime_timer.stop();
-
-  if (duration.has_value()) {
-    instance().deltatime = duration.value().count();
-  }
-
-  instance().deltatime_timer.start();
-  instance().renderbatches[instance().flightframe].drawcommands.clear();
-}
-
-auto wait_for_next_frame() {
+auto wait_for_next_frame() -> void {
   const auto fences =
       std::array{instance().in_flight[instance().flightframe].get()};
   const auto max_wait = std::numeric_limits<unsigned int>::max();
@@ -717,6 +990,23 @@ auto wait_for_next_frame() {
   instance().image_index = result.value;
 }
 
+auto begin_frame() -> void {
+  wait_for_next_frame();
+
+  const auto duration = instance().deltatime_timer.stop();
+
+  if (duration.has_value()) {
+    instance().deltatime = duration.value().count();
+  }
+
+  instance().deltatime_timer.start();
+  instance().frames[instance().flightframe].drawflatcolor.clear();
+  instance().frames[instance().flightframe].drawtexture.clear();
+  instance().frames[instance().flightframe].texture_diffuse_sets.reset();
+  context::device().resetDescriptorPool(
+      instance().frames[instance().flightframe].diffuse_pool.get());
+}
+
 auto view_matrix() -> glm::mat4 {
   const auto camera = instance().camera;
   const auto target = camera.position() + camera.forward();
@@ -735,8 +1025,6 @@ auto projection_matrix() -> glm::mat4 {
 }
 
 auto end_frame() -> void {
-  wait_for_next_frame();
-
   instance().uniform_arenas[instance().flightframe].reset();
 
   const auto draw_task = TaskID{0};
@@ -786,9 +1074,9 @@ auto end_frame() -> void {
     commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
                                instance().pipe.flatcolor.pipeline.get());
 
-    auto &drawcommands =
-        instance().renderbatches[instance().flightframe].drawcommands;
-    for (auto &command : drawcommands) {
+    auto &drawflatcolor =
+        instance().frames[instance().flightframe].drawflatcolor;
+    for (auto &command : drawflatcolor) {
       auto *mesh = resources::get(command.mesh);
       if (!mesh) {
 
@@ -809,28 +1097,145 @@ auto end_frame() -> void {
       }
 
       {
-        auto mvp = MVP{};
-        mvp.model = command.location;
-        mvp.view = view_matrix();
-        mvp.color = glm::vec3{static_cast<float>(command.color.r) / 255,
-                              static_cast<float>(command.color.g) / 255,
-                              static_cast<float>(command.color.b) / 255};
-        mvp.projection = projection_matrix();
+        auto flatcoloruniform = FlatColorUniform{};
+        flatcoloruniform.model = command.location;
+        flatcoloruniform.view = view_matrix();
+        flatcoloruniform.color =
+            glm::vec3{static_cast<float>(command.color.r) / 255,
+                      static_cast<float>(command.color.g) / 255,
+                      static_cast<float>(command.color.b) / 255};
+        flatcoloruniform.projection = projection_matrix();
 
         auto allocation =
             instance().uniform_arenas[instance().flightframe].allocate(
-                sizeof(mvp));
+                sizeof(flatcoloruniform));
         if (!allocation.has_value()) {
           LOG_ERROR("Ran out of uniform arena memory");
           continue;
         }
 
-        std::memcpy(allocation->ptr, &mvp, sizeof(mvp));
+        std::memcpy(allocation->ptr, &flatcoloruniform,
+                    sizeof(flatcoloruniform));
 
         const auto layout = instance().pipe.flatcolor.layout.get();
         const auto first_set = std::uint32_t{0};
         const auto sets = std::array{
             instance().pipe.flatcolor.modelinfo_sets[instance().flightframe]};
+        const auto dynamic_offsets =
+            std::array{static_cast<std::uint32_t>(allocation->dynamic_offset)};
+        commandbuffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics, layout, first_set,
+            static_cast<std::uint32_t>(sets.size()), sets.data(),
+            static_cast<std::uint32_t>(dynamic_offsets.size()),
+            dynamic_offsets.data());
+      }
+
+      commandbuffer.drawIndexed(mesh->indices_count, 1, 0, 0, 0);
+    }
+
+    commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
+                               instance().pipe.texture.pipeline.get());
+
+    auto &drawtexture = instance().frames[instance().flightframe].drawtexture;
+    for (auto &command : drawtexture) {
+      auto *mesh = resources::get(command.mesh);
+      if (!mesh) {
+
+        LOG_ERROR("Got invalid mesh in draw commands");
+        continue;
+      }
+
+      auto *diffuse = resources::get(command.diffuse);
+      if (!diffuse) {
+
+        LOG_ERROR("Got invalid diffuse in draw commands");
+        continue;
+      }
+
+      const auto key =
+          hash_combine({command.diffuse.index(), command.diffuse.generation()});
+
+      auto *diffuse_set =
+          instance().frames[instance().flightframe].texture_diffuse_sets.find(
+              key);
+      if (diffuse_set == nullptr) {
+        const auto allocate_info =
+            vk::DescriptorSetAllocateInfo{}
+                .setDescriptorPool(instance()
+                                       .frames[instance().flightframe]
+                                       .diffuse_pool.get())
+                .setDescriptorSetCount(1)
+                .setSetLayouts(instance().pipe.texture.diffuse_layout.get());
+
+        auto allocated =
+            context::device().allocateDescriptorSets(allocate_info);
+
+        if (!diffuse->texture.sampler().has_value()) {
+          diffuse->texture.make_sampler();
+        }
+
+        const auto image_info =
+            vk::DescriptorImageInfo{}
+                .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal)
+                .setSampler(diffuse->texture.sampler().value())
+                .setImageView(diffuse->texture.view());
+
+        const std::array<vk::WriteDescriptorSet, 1> writes{
+            vk::WriteDescriptorSet{}
+                .setDstBinding(0)
+                .setDstArrayElement(0)
+                .setDstSet(allocated[0])
+                .setDescriptorCount(1)
+                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+                .setImageInfo(image_info)};
+
+        context::device().updateDescriptorSets(writes.size(), writes.data(), 0,
+                                               nullptr);
+
+        instance().frames[instance().flightframe].texture_diffuse_sets.insert(
+            key, allocated[0]);
+        diffuse_set =
+            instance().frames[instance().flightframe].texture_diffuse_sets.find(
+                key);
+      }
+
+      if (diffuse_set == nullptr) {
+        LOG_ERROR("Not possible to make a descriptorset for diffuse");
+      }
+
+      {
+        std::vector<vk::DeviceSize> offsets = {0};
+        std::vector<vk::Buffer> buffers = {mesh->vertices.buffer()};
+        commandbuffer.bindVertexBuffers(0, 1, buffers.data(), offsets.data());
+      }
+
+      {
+        vk::DeviceSize offset = 0;
+        vk::Buffer buffer = mesh->indices.buffer();
+        commandbuffer.bindIndexBuffer(buffer, offset, vk::IndexType::eUint32);
+      }
+
+      {
+        auto uniform = TextureUniform{};
+        uniform.model = command.location;
+        uniform.view = view_matrix();
+        uniform.projection = projection_matrix();
+
+        auto allocation =
+            instance().uniform_arenas[instance().flightframe].allocate(
+                sizeof(uniform));
+        if (!allocation.has_value()) {
+          LOG_ERROR("Ran out of uniform arena memory");
+          continue;
+        }
+
+        std::memcpy(allocation->ptr, &uniform, sizeof(uniform));
+
+        const auto layout = instance().pipe.texture.layout.get();
+        const auto first_set = std::uint32_t{0};
+        const auto sets = std::array{
+            instance().pipe.texture.modelinfo_sets[instance().flightframe],
+            *diffuse_set};
         const auto dynamic_offsets =
             std::array{static_cast<std::uint32_t>(allocation->dynamic_offset)};
         commandbuffer.bindDescriptorSets(
@@ -972,8 +1377,6 @@ auto end_frame() -> void {
   }
   commandbuffer.end();
 
-  // instance().render_finished[instance().image_index].get(),
-
   const auto wait_semaphores =
       std::array{instance().image_available[instance().flightframe].get(),
                  rendergraph_finished_signal};
@@ -1014,8 +1417,14 @@ auto set_clearcolor(Color color) -> void { instance().clearcolor = color; }
 auto set_camera(Camera camera) -> void { instance().camera = camera; }
 
 auto draw_flatcolor(glm::mat4 location, MeshRef mesh, Color color) -> void {
-  instance().renderbatches[instance().flightframe].drawcommands.emplace_back(
+  instance().frames[instance().flightframe].drawflatcolor.emplace_back(
       location, mesh, color);
+}
+
+auto draw_textured(glm::mat4 location, MeshRef mesh, TextureRef texture)
+    -> void {
+  instance().frames[instance().flightframe].drawtexture.emplace_back(
+      location, mesh, texture);
 }
 
 } // namespace bubble::renderer

@@ -83,6 +83,21 @@ int main(int argc, char **argv) {
   const auto cube_location = glm::scale(glm::mat4(1.0f), glm::vec3(0.5f));
   const auto cube_color = bubble::color::ugly_pink;
 
+  auto error_bitmap = bubble::Bitmap(64, 64, bubble::Color(255, 255, 0, 255));
+  for (std::size_t i = 0; i < 32; i++) {
+    for (std::size_t j = 0; j < 32; j++) {
+      *error_bitmap.at(i, j) = bubble::color::red;
+    }
+  }
+
+  for (std::size_t i = 32; i < 64; i++) {
+    for (std::size_t j = 32; j < 64; j++) {
+      *error_bitmap.at(i, j) = bubble::color::red;
+    }
+  }
+
+  const auto error_texture = bubble::create_texture(error_bitmap);
+
   auto button_focus = bubble::input::Button(SDLK_f);
   auto axis_x = bubble::input::Axis(SDLK_d, SDLK_a);
   auto axis_z = bubble::input::Axis(SDLK_s, SDLK_w);
@@ -127,6 +142,11 @@ int main(int argc, char **argv) {
 
     bubble::set_camera(camera);
     bubble::draw_flatcolor(cube_location, *cube_mesh, cube_color);
+
+    bubble::draw_textured(
+        glm::translate(cube_location, glm::vec3(2.0f, 0.0f, 0.0f)), *cube_mesh,
+        error_texture.value());
+
     bubble::end_frame();
   }
 

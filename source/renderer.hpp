@@ -3,26 +3,41 @@
 #include <bubble/internal/glm.hpp>
 #include <bubble/timer.hpp>
 
+#include "bubble/bubble.hpp"
 #include "context.hpp"
 #include "task_graph.hpp"
 #include "texture.hpp"
 #include "uniform_arena.hpp"
+#include "flat_sorted_set.hpp"
 
 namespace bubble::renderer {
 
 inline constexpr const auto frames_in_flight = std::uint32_t{2};
 
-struct DrawCommand {
+struct DrawFlatColor {
   glm::mat4 location;
   MeshRef mesh;
   Color color;
 };
 
-struct MVP {
+struct DrawTexture {
+  glm::mat4 location;
+  MeshRef mesh;
+  TextureRef diffuse;
+};
+
+struct FlatColorUniform {
   glm::mat4 model;
   glm::mat4 view;
   glm::mat4 projection;
   alignas(sizeof(glm::vec4)) glm::vec3 color;
+};
+
+struct TextureUniform {
+  glm::mat4 model;
+  glm::mat4 view;
+  glm::mat4 projection;
+  //DirectionalLight directional_light;
 };
 
 struct Instance {
@@ -62,13 +77,25 @@ struct Instance {
       vk::UniqueDescriptorSetLayout modelinfo_layout;
       std::vector<vk::DescriptorSet> modelinfo_sets;
     } flatcolor;
+
+    struct {
+      vk::UniquePipelineLayout layout;
+      vk::UniquePipeline pipeline;
+      vk::UniqueDescriptorSetLayout modelinfo_layout;
+      vk::UniqueDescriptorSetLayout diffuse_layout;
+      std::vector<vk::DescriptorSet> modelinfo_sets;
+    } texture;
+
   } pipe;
 
-  struct RenderBatch {
-    std::vector<DrawCommand> drawcommands;
+  struct Frame {
+    FlatSortedSet<vk::DescriptorSet> texture_diffuse_sets; 
+    vk::UniqueDescriptorPool diffuse_pool;
+    std::vector<DrawFlatColor> drawflatcolor;
+    std::vector<DrawTexture> drawtexture;
   };
 
-  std::vector<RenderBatch> renderbatches;
+  std::vector<Frame> frames;
 };
 
 auto instance() -> Instance &;
@@ -85,6 +112,8 @@ auto begin_frame() -> void;
 auto end_frame() -> void;
 
 auto draw_flatcolor(glm::mat4 location, MeshRef mesh, Color color) -> void;
+
+auto draw_textured(glm::mat4 location, MeshRef mesh, TextureRef texture) -> void;
 
 auto destroy() -> void;
 

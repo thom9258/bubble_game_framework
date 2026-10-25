@@ -1,5 +1,6 @@
 #include "texture.hpp"
 #include "context.hpp"
+#include <vulkan/vulkan_structs.hpp>
 
 namespace bubble {
 
@@ -64,7 +65,47 @@ Texture::Texture(vk::Extent2D extent, vk::ImageUsageFlags usage,
 }
 
 auto Texture::memory() -> vk::DeviceMemory { return _memory.get(); }
+
 auto Texture::view() -> vk::ImageView { return _view.get(); }
+
 auto Texture::image() -> vk::Image { return _image.get(); }
+
+auto Texture::make_sampler() -> void {
+  const auto features = context::physical_device().getFeatures();
+  const auto properties = context::physical_device().getProperties();
+  const auto max_anisotropy =
+      features.samplerAnisotropy
+          ? std::min(4.0f, properties.limits.maxSamplerAnisotropy)
+          : 1.0f;
+
+  const vk::Filter filter = vk::Filter::eNearest;
+  const auto sampler_info =
+      vk::SamplerCreateInfo{}
+          .setMagFilter(filter)
+          .setMinFilter(filter)
+          .setAddressModeU(vk::SamplerAddressMode::eRepeat)
+          .setAddressModeV(vk::SamplerAddressMode::eRepeat)
+          .setAddressModeW(vk::SamplerAddressMode::eRepeat)
+          .setAnisotropyEnable(features.samplerAnisotropy)
+          .setMaxAnisotropy(max_anisotropy)
+          .setBorderColor(vk::BorderColor::eIntOpaqueBlack)
+          .setUnnormalizedCoordinates(false)
+          .setCompareEnable(false)
+          .setCompareOp(vk::CompareOp::eAlways)
+          .setMipmapMode(vk::SamplerMipmapMode::eLinear)
+          .setMipLodBias(0.0f)
+          .setMinLod(0.0f)
+          .setMaxLod(0.0f);
+
+  _sampler = context::device().createSamplerUnique(sampler_info);
+}
+
+auto Texture::sampler() -> std::optional<vk::Sampler> {
+  if (_sampler.has_value()) {
+    return _sampler->get();
+  }
+
+  return std::nullopt;
+}
 
 } // namespace bubble

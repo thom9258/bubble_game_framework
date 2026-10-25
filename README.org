@@ -6,7 +6,7 @@ Things needed to make a simple game for a gamejam (sort of sorted by importance)
 - [X] Mouse Input
 - [X] Mouse Locking/Hiding
 - [X] Camera control utility (rotation, lookat etc.)
-- [ ] Texture Pipeline Rendering
+- [X] Texture Pipeline Rendering
 - [ ] Lights without shadowcasting
 - [ ] Model Loading
 - [ ] Physics

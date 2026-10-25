@@ -163,4 +163,6 @@ auto end_frame() -> void;
 
 auto draw_flatcolor(glm::mat4 location, MeshRef mesh, Color color) -> void;
 
+auto draw_textured(glm::mat4 location, MeshRef mesh, TextureRef texture) -> void;
+
 } // namespace bubble

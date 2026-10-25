@@ -19,3 +19,4 @@ function compile_vert_frag ()
 }
 
 compile_vert_frag "flatcolor"
+compile_vert_frag "texture"
