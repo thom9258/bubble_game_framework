@@ -4,6 +4,11 @@
 #include "resources.hpp"
 #include "uniform_arena.hpp"
 
+#include "embedded_shaders/flatcolor_vert.hpp"
+#include "embedded_shaders/flatcolor_frag.hpp"
+#include "embedded_shaders/texture_vert.hpp"
+#include "embedded_shaders/texture_frag.hpp"
+
 #include <filesystem>
 #include <fstream>
 #include <ranges>
@@ -31,6 +36,7 @@ auto get_best_swapchain_surface_format(
   return availables.front();
 }
 
+#if 0
 [[nodiscard]]
 std::vector<std::uint32_t> read_spirv_source(std::filesystem::path path) {
 
@@ -50,6 +56,7 @@ std::vector<std::uint32_t> read_spirv_source(std::filesystem::path path) {
   file.close();
   return buffer;
 }
+#endif
 
 auto initialize_rendergraphs() -> bool {
   for (std::size_t i = 0; i < frames_in_flight; i++) {
@@ -384,27 +391,13 @@ auto initialize_mainpass() -> bool {
 }
 
 auto initialize_flatcolor_pipe() -> bool {
-  const auto vertex_path = std::filesystem::path("flatcolor.vert.spv");
-  auto vertex_source = read_spirv_source(vertex_path);
-  if (vertex_source.empty()) {
-    LOG_ERROR("Could not read shader '{}'", vertex_path.string());
-    return false;
-  }
-
-  const auto fragment_path = std::filesystem::path("flatcolor.frag.spv");
-  auto fragment_source = read_spirv_source(fragment_path);
-  if (fragment_source.empty()) {
-    LOG_ERROR("Could not read shader '{}'", fragment_path.string());
-    return false;
-  }
-
   const auto vertex_module_info = vk::ShaderModuleCreateInfo{}
                                       .setFlags(vk::ShaderModuleCreateFlags())
-                                      .setCode(vertex_source);
+                                      .setCode(embedded_shaders::flatcolor_vert::spirv);
 
   const auto fragment_module_info = vk::ShaderModuleCreateInfo{}
                                         .setFlags(vk::ShaderModuleCreateFlags())
-                                        .setCode(fragment_source);
+                                        .setCode(embedded_shaders::flatcolor_frag::spirv);
 
   auto vertex_module =
       context::device().createShaderModuleUnique(vertex_module_info);
@@ -623,27 +616,13 @@ auto initialize_flatcolor_sets() -> bool {
 }
 
 auto initialize_texture_pipe() -> bool {
-  const auto vertex_path = std::filesystem::path("texture.vert.spv");
-  auto vertex_source = read_spirv_source(vertex_path);
-  if (vertex_source.empty()) {
-    LOG_ERROR("Could not read shader '{}'", vertex_path.string());
-    return false;
-  }
-
-  const auto fragment_path = std::filesystem::path("texture.frag.spv");
-  auto fragment_source = read_spirv_source(fragment_path);
-  if (fragment_source.empty()) {
-    LOG_ERROR("Could not read shader '{}'", fragment_path.string());
-    return false;
-  }
-
   const auto vertex_module_info = vk::ShaderModuleCreateInfo{}
                                       .setFlags(vk::ShaderModuleCreateFlags())
-                                      .setCode(vertex_source);
+                                      .setCode(embedded_shaders::texture_vert::spirv);
 
   const auto fragment_module_info = vk::ShaderModuleCreateInfo{}
                                         .setFlags(vk::ShaderModuleCreateFlags())
-                                        .setCode(fragment_source);
+                                        .setCode(embedded_shaders::texture_frag::spirv);
 
   auto vertex_module =
       context::device().createShaderModuleUnique(vertex_module_info);
