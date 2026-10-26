@@ -76,14 +76,16 @@ constexpr auto FlatSortedSet<T>::insert(Key key, const Value &value) -> void {
 
 template <typename T>
 constexpr auto FlatSortedSet<T>::insert(Key key, Value &&value) -> void {
-  auto sorted_location = std::ranges::upper_bound(_entries, key, std::less<>{}, &Entry::key);
+  auto sorted_location =
+      std::ranges::upper_bound(_entries, key, std::less<>{}, &Entry::key);
   _entries.emplace(sorted_location, key, std::move(value));
 }
 
 template <typename T>
 constexpr auto FlatSortedSet<T>::find(Key key) -> Value * {
-  const auto found = std::ranges::lower_bound(_entries, key, std::less<>{}, &Entry::key);
-  if (found == _entries.end()) {
+  const auto found =
+      std::ranges::lower_bound(_entries, key, std::less<>{}, &Entry::key);
+  if (found == _entries.end() || found->key != key) {
     return nullptr;
   }
 
@@ -96,7 +98,7 @@ template <typename T> constexpr auto FlatSortedSet<T>::reset() -> void {
 
 template <typename T>
 constexpr auto FlatSortedSet<T>::size() const -> std::size_t {
-  _entries.size();
+  return _entries.size();
 }
 
 } // namespace bubble

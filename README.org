@@ -11,5 +11,6 @@ Things needed to make a simple game for a gamejam (sort of sorted by importance)
 - [ ] Sound Manager
 - [ ] Windows Publish
 - [ ] Animated Models
+- [ ] Drawing with Color Blending (billboard)
 - [ ] 2D sprite rendering for UI
 - [ ] Window Resize

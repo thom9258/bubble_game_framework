@@ -4,14 +4,16 @@
 #include "resources.hpp"
 #include "uniform_arena.hpp"
 
-#include "embedded_shaders/flatcolor_vert.hpp"
 #include "embedded_shaders/flatcolor_frag.hpp"
-#include "embedded_shaders/texture_vert.hpp"
+#include "embedded_shaders/flatcolor_vert.hpp"
 #include "embedded_shaders/texture_frag.hpp"
+#include "embedded_shaders/texture_vert.hpp"
 
 #include <filesystem>
 #include <fstream>
+#include <print>
 #include <ranges>
+
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_enums.hpp>
 #include <vulkan/vulkan_structs.hpp>
@@ -391,13 +393,15 @@ auto initialize_mainpass() -> bool {
 }
 
 auto initialize_flatcolor_pipe() -> bool {
-  const auto vertex_module_info = vk::ShaderModuleCreateInfo{}
-                                      .setFlags(vk::ShaderModuleCreateFlags())
-                                      .setCode(embedded_shaders::flatcolor_vert::spirv);
+  const auto vertex_module_info =
+      vk::ShaderModuleCreateInfo{}
+          .setFlags(vk::ShaderModuleCreateFlags())
+          .setCode(embedded_shaders::flatcolor_vert::spirv);
 
-  const auto fragment_module_info = vk::ShaderModuleCreateInfo{}
-                                        .setFlags(vk::ShaderModuleCreateFlags())
-                                        .setCode(embedded_shaders::flatcolor_frag::spirv);
+  const auto fragment_module_info =
+      vk::ShaderModuleCreateInfo{}
+          .setFlags(vk::ShaderModuleCreateFlags())
+          .setCode(embedded_shaders::flatcolor_frag::spirv);
 
   auto vertex_module =
       context::device().createShaderModuleUnique(vertex_module_info);
@@ -616,13 +620,15 @@ auto initialize_flatcolor_sets() -> bool {
 }
 
 auto initialize_texture_pipe() -> bool {
-  const auto vertex_module_info = vk::ShaderModuleCreateInfo{}
-                                      .setFlags(vk::ShaderModuleCreateFlags())
-                                      .setCode(embedded_shaders::texture_vert::spirv);
+  const auto vertex_module_info =
+      vk::ShaderModuleCreateInfo{}
+          .setFlags(vk::ShaderModuleCreateFlags())
+          .setCode(embedded_shaders::texture_vert::spirv);
 
-  const auto fragment_module_info = vk::ShaderModuleCreateInfo{}
-                                        .setFlags(vk::ShaderModuleCreateFlags())
-                                        .setCode(embedded_shaders::texture_frag::spirv);
+  const auto fragment_module_info =
+      vk::ShaderModuleCreateInfo{}
+          .setFlags(vk::ShaderModuleCreateFlags())
+          .setCode(embedded_shaders::texture_frag::spirv);
 
   auto vertex_module =
       context::device().createShaderModuleUnique(vertex_module_info);
@@ -1183,6 +1189,15 @@ auto end_frame() -> void {
       }
 
       {
+        const auto layout = instance().pipe.texture.layout.get();
+        const auto first_set = std::uint32_t{1};
+        const auto sets = std::array{*diffuse_set};
+        commandbuffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics, layout, first_set,
+            static_cast<std::uint32_t>(sets.size()), sets.data(), 0, nullptr);
+      }
+
+      {
         std::vector<vk::DeviceSize> offsets = {0};
         std::vector<vk::Buffer> buffers = {mesh->vertices.buffer()};
         commandbuffer.bindVertexBuffers(0, 1, buffers.data(), offsets.data());
@@ -1213,10 +1228,10 @@ auto end_frame() -> void {
         const auto layout = instance().pipe.texture.layout.get();
         const auto first_set = std::uint32_t{0};
         const auto sets = std::array{
-            instance().pipe.texture.modelinfo_sets[instance().flightframe],
-            *diffuse_set};
+            instance().pipe.texture.modelinfo_sets[instance().flightframe]};
         const auto dynamic_offsets =
             std::array{static_cast<std::uint32_t>(allocation->dynamic_offset)};
+
         commandbuffer.bindDescriptorSets(
             vk::PipelineBindPoint::eGraphics, layout, first_set,
             static_cast<std::uint32_t>(sets.size()), sets.data(),
