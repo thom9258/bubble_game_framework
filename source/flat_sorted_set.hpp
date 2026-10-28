@@ -10,23 +10,15 @@ namespace bubble {
 
 constexpr auto hash_combine(std::size_t hash, std::uint32_t value)
     -> std::size_t {
-  hash ^=
-      static_cast<std::size_t>(value) + 0x9e3779b9 + (hash << 6) + (hash >> 2);
-  return hash;
-}
-
-constexpr auto hash_combine(std::span<std::uint32_t> values) -> std::size_t {
-  std::size_t hash = 0;
-  for (auto value : values) {
-    hash = hash_combine(hash, value);
-  }
-
+  static constexpr const auto golden_ratio = std::size_t{0x9e3779b9};
+  hash ^= static_cast<std::size_t>(value) + golden_ratio + (hash << 6) +
+          (hash >> 2);
   return hash;
 }
 
 constexpr auto hash_combine(std::initializer_list<std::uint32_t> values)
     -> std::size_t {
-  std::size_t hash = 0;
+  auto hash = std::size_t{0};
   for (auto value : values) {
     hash = hash_combine(hash, value);
   }
@@ -65,7 +57,7 @@ private:
   };
 
   std::vector<Entry> _entries;
-}; // namespace bubble
+};
 
 template <typename T>
 constexpr auto FlatSortedSet<T>::insert(Key key, const Value &value) -> void {

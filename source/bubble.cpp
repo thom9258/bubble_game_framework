@@ -56,7 +56,7 @@ auto deltatime() -> std::optional<float> {
 }
 
 Camera::Camera(glm::vec3 position, glm::vec3 forward)
-    : _position{position}, _forward{forward} {}
+    : _position{position}, _forward{glm::normalize(forward)} {}
 
 auto Camera::translate_global(glm::vec3 delta) -> void { _position += delta; }
 
@@ -66,6 +66,8 @@ auto Camera::translate_local(glm::vec3 delta) -> void {
       (right * delta.x) + (_up * delta.y) + (_forward * delta.z);
   _position += displacement;
 }
+
+auto Camera::set_position(glm::vec3 position) -> void { _position = position; }
 
 auto Camera::rotate(glm::vec2 delta) -> void {
   auto yaw = std::atan2(_forward.z, _forward.x);
@@ -89,9 +91,11 @@ auto Camera::look_at(glm::vec3 target) -> void {
 
 auto Camera::position() const -> glm::vec3 { return _position; }
 
-auto Camera::forward() const -> glm::vec3 { return _forward; }
+auto Camera::forward() const -> glm::vec3 { return glm::normalize(_forward); }
 
 auto Camera::up() const -> glm::vec3 { return _up; }
+
+auto Camera::right() const -> glm::vec3 { return glm::normalize(glm::cross(up(), forward())); }
 
 auto Camera::fov_y() const -> float { return _fov_y; }
 

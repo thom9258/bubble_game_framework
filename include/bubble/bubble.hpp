@@ -89,6 +89,8 @@ public:
 
   auto translate_local(glm::vec3 delta) -> void;
 
+  auto set_position(glm::vec3 position) -> void;
+
   auto rotate(glm::vec2 delta) -> void;
 
   auto look_at(glm::vec3 target) -> void;
@@ -101,6 +103,9 @@ public:
 
   [[nodiscard]]
   auto up() const -> glm::vec3;
+
+  [[nodiscard]]
+  auto right() const -> glm::vec3;
 
   [[nodiscard]]
   auto fov_y() const -> float;
