@@ -1,4 +1,5 @@
 #include "renderer.hpp"
+#include "bubble/context.hpp"
 #include "context.hpp"
 #include "flat_sorted_set.hpp"
 #include "resources.hpp"
@@ -18,13 +19,11 @@
 #include <vulkan/vulkan_enums.hpp>
 #include <vulkan/vulkan_structs.hpp>
 
-namespace bubble::renderer {
+namespace bubble {
 
-namespace singleton {
-static std::unique_ptr<Instance> ginstance{nullptr};
-}
+static std::unique_ptr<RendererImpl> g_instance{nullptr};
 
-auto instance() -> Instance & { return *singleton::ginstance; }
+auto RendererImpl::instance() -> RendererImpl & { return *g_instance; }
 
 auto get_best_swapchain_surface_format(
     const std::span<vk::SurfaceFormatKHR> availables) -> vk::SurfaceFormatKHR {
@@ -38,31 +37,9 @@ auto get_best_swapchain_surface_format(
   return availables.front();
 }
 
-#if 0
-[[nodiscard]]
-std::vector<std::uint32_t> read_spirv_source(std::filesystem::path path) {
-
-  std::ifstream file(path, std::ios::ate | std::ios::binary);
-  if (!file.is_open()) {
-    return {};
-  }
-
-  size_t const bytecount = static_cast<size_t>(file.tellg());
-  constexpr size_t scaling_factor = sizeof(uint32_t) / sizeof(char);
-  size_t const read_times = bytecount / scaling_factor;
-  std::vector<std::uint32_t> buffer;
-  buffer.resize(read_times);
-  file.seekg(0);
-  file.read(reinterpret_cast<char *>(buffer.data()),
-            sizeof(buffer[0]) * buffer.size());
-  file.close();
-  return buffer;
-}
-#endif
-
 auto initialize_rendergraphs() -> bool {
   for (std::size_t i = 0; i < frames_in_flight; i++) {
-    instance().rendergraphs.push_back(TaskGraph{});
+    RendererImpl::instance().rendergraphs.push_back(TaskGraph{});
   }
 
   return true;
@@ -71,16 +48,16 @@ auto initialize_rendergraphs() -> bool {
 auto initialize_uniform_arenas() -> bool {
   static constexpr const auto uniform_arena_size = 1024 * 10;
   for (std::size_t i = 0; i < frames_in_flight; i++) {
-    instance().uniform_arenas.emplace_back(uniform_arena_size);
+    RendererImpl::instance().uniform_arenas.emplace_back(uniform_arena_size);
   }
 
   return true;
 }
 
-auto initialize_swapchain(InitializeInfo &info) -> bool {
+auto initialize_swapchain(const InitializeConfig &config) -> bool {
   vk::SurfaceCapabilitiesKHR window_capabilities =
-      context::physical_device().getSurfaceCapabilitiesKHR(
-          context::instance().surface.get());
+      ContextImpl::physical_device().getSurfaceCapabilitiesKHR(
+          ContextImpl::instance().surface.get());
 
   if (window_capabilities.currentExtent.width ==
       std::numeric_limits<uint32_t>::max()) {
@@ -89,8 +66,8 @@ auto initialize_swapchain(InitializeInfo &info) -> bool {
   }
 
   std::uint32_t surface_format_count{0};
-  vk::Result result = context::physical_device().getSurfaceFormatsKHR(
-      context::instance().surface.get(), &surface_format_count, nullptr);
+  vk::Result result = ContextImpl::physical_device().getSurfaceFormatsKHR(
+      ContextImpl::instance().surface.get(), &surface_format_count, nullptr);
   if (result != vk::Result::eSuccess) {
     LOG_ERROR("could not get surface format count!");
     return false;
@@ -99,18 +76,18 @@ auto initialize_swapchain(InitializeInfo &info) -> bool {
   std::vector<vk::SurfaceFormatKHR> available_surface_formats(
       surface_format_count);
 
-  result = context::physical_device().getSurfaceFormatsKHR(
-      context::instance().surface.get(), &surface_format_count,
+  result = ContextImpl::physical_device().getSurfaceFormatsKHR(
+      ContextImpl::instance().surface.get(), &surface_format_count,
       available_surface_formats.data());
   if (result != vk::Result::eSuccess) {
     LOG_ERROR("could not get surface format count!");
     return false;
   }
 
-  instance().swapchain_format =
+  RendererImpl::instance().swapchain_format =
       get_best_swapchain_surface_format(available_surface_formats);
 
-  vk::PresentModeKHR const present_mode = (info.options.enable_vsync)
+  vk::PresentModeKHR const present_mode = (config.options.enable_vsync)
                                               ? vk::PresentModeKHR::eFifo
                                               : vk::PresentModeKHR::eImmediate;
 
@@ -147,12 +124,13 @@ auto initialize_swapchain(InitializeInfo &info) -> bool {
   auto swapChainCreateInfo =
       vk::SwapchainCreateInfoKHR{}
           .setFlags(vk::SwapchainCreateFlagsKHR())
-          .setSurface(context::instance().surface.get())
+          .setSurface(ContextImpl::instance().surface.get())
           .setMinImageCount(image_count)
-          .setImageFormat(instance().swapchain_format.format)
-          .setImageColorSpace(instance().swapchain_format.colorSpace)
+          .setImageFormat(RendererImpl::instance().swapchain_format.format)
+          .setImageColorSpace(
+              RendererImpl::instance().swapchain_format.colorSpace)
           .setImageExtent(
-              vk::Extent2D{}.setWidth(info.width).setHeight(info.height))
+              vk::Extent2D{}.setWidth(config.width).setHeight(config.height))
           .setImageArrayLayers(1)
           .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment |
                          vk::ImageUsageFlagBits::eTransferSrc |
@@ -164,24 +142,25 @@ auto initialize_swapchain(InitializeInfo &info) -> bool {
           .setPresentMode(present_mode)
           .setImageSharingMode(vk::SharingMode::eExclusive);
 
-  instance().swapchain =
-      context::device().createSwapchainKHRUnique(swapChainCreateInfo, nullptr);
+  RendererImpl::instance().swapchain =
+      ContextImpl::device().createSwapchainKHRUnique(swapChainCreateInfo,
+                                                     nullptr);
   return true;
 }
 
 auto initialize_swapchain_images() -> bool {
   std::uint32_t image_count{0};
-  vk::Result result = context::device().getSwapchainImagesKHR(
-      instance().swapchain.get(), &image_count, nullptr);
+  vk::Result result = ContextImpl::device().getSwapchainImagesKHR(
+      RendererImpl::instance().swapchain.get(), &image_count, nullptr);
 
   if (result != vk::Result::eSuccess) {
     LOG_ERROR("could not get swapchain image count!");
   }
 
-  instance().swapchain_images.resize(image_count);
-  result = context::device().getSwapchainImagesKHR(
-      instance().swapchain.get(), &image_count,
-      instance().swapchain_images.data());
+  RendererImpl::instance().swapchain_images.resize(image_count);
+  result = ContextImpl::device().getSwapchainImagesKHR(
+      RendererImpl::instance().swapchain.get(), &image_count,
+      RendererImpl::instance().swapchain_images.data());
 
   if (result != vk::Result::eSuccess) {
     LOG_ERROR("could not get surface formats!");
@@ -191,7 +170,8 @@ auto initialize_swapchain_images() -> bool {
 }
 
 auto initialize_swapchain_imageviews() -> bool {
-  instance().swapchain_imageviews.resize(instance().swapchain_images.size());
+  RendererImpl::instance().swapchain_imageviews.resize(
+      RendererImpl::instance().swapchain_images.size());
   auto subresourceRange = vk::ImageSubresourceRange{}
                               .setAspectMask(vk::ImageAspectFlagBits::eColor)
                               .setBaseMipLevel(0)
@@ -205,31 +185,35 @@ auto initialize_swapchain_imageviews() -> bool {
                               .setB(vk::ComponentSwizzle::eIdentity)
                               .setA(vk::ComponentSwizzle::eIdentity);
 
-  auto imageViewCreateInfo = vk::ImageViewCreateInfo{}
-                                 .setSubresourceRange(subresourceRange)
-                                 .setViewType(vk::ImageViewType::e2D)
-                                 .setFormat(instance().swapchain_format.format)
-                                 .setComponents(componentMapping);
+  auto imageViewCreateInfo =
+      vk::ImageViewCreateInfo{}
+          .setSubresourceRange(subresourceRange)
+          .setViewType(vk::ImageViewType::e2D)
+          .setFormat(RendererImpl::instance().swapchain_format.format)
+          .setComponents(componentMapping);
 
   for (auto [i, view] :
-       instance().swapchain_imageviews | std::views::enumerate) {
-    imageViewCreateInfo.setImage(instance().swapchain_images[i]);
-    view = context::device().createImageViewUnique(imageViewCreateInfo);
+       RendererImpl::instance().swapchain_imageviews | std::views::enumerate) {
+    imageViewCreateInfo.setImage(RendererImpl::instance().swapchain_images[i]);
+    view = ContextImpl::device().createImageViewUnique(imageViewCreateInfo);
   }
 
   return true;
 }
 
 auto initialize_synchronization() -> bool {
-  instance().render_finished.resize(instance().swapchain_images.size());
-  for (vk::UniqueSemaphore &semaphore : instance().render_finished) {
-    semaphore = context::device().createSemaphoreUnique(
+  RendererImpl::instance().render_finished.resize(
+      RendererImpl::instance().swapchain_images.size());
+  for (vk::UniqueSemaphore &semaphore :
+       RendererImpl::instance().render_finished) {
+    semaphore = ContextImpl::device().createSemaphoreUnique(
         vk::SemaphoreCreateInfo{}, nullptr);
   }
 
-  instance().image_available.resize(frames_in_flight);
-  for (vk::UniqueSemaphore &semaphore : instance().image_available) {
-    semaphore = context::device().createSemaphoreUnique(
+  RendererImpl::instance().image_available.resize(frames_in_flight);
+  for (vk::UniqueSemaphore &semaphore :
+       RendererImpl::instance().image_available) {
+    semaphore = ContextImpl::device().createSemaphoreUnique(
         vk::SemaphoreCreateInfo{}, nullptr);
   }
 
@@ -237,22 +221,23 @@ auto initialize_synchronization() -> bool {
   // for the first frame fence
   const auto fence_create_info =
       vk::FenceCreateInfo{}.setFlags(vk::FenceCreateFlagBits::eSignaled);
-  instance().in_flight.resize(frames_in_flight);
-  for (vk::UniqueFence &fence : instance().in_flight) {
-    fence = context::device().createFenceUnique(fence_create_info, nullptr);
+  RendererImpl::instance().in_flight.resize(frames_in_flight);
+  for (vk::UniqueFence &fence : RendererImpl::instance().in_flight) {
+    fence = ContextImpl::device().createFenceUnique(fence_create_info, nullptr);
   }
 
-  instance().presentbuffers.resize(instance().swapchain_images.size());
+  RendererImpl::instance().presentbuffers.resize(
+      RendererImpl::instance().swapchain_images.size());
 
   auto init_commandbuffer_alloc_info =
       vk::CommandBufferAllocateInfo{}
-          .setCommandPool(context::instance().commandpool.get())
+          .setCommandPool(ContextImpl::instance().commandpool.get())
           .setLevel(vk::CommandBufferLevel::ePrimary)
           .setCommandBufferCount(1);
 
-  for (auto &commandbuffer : instance().presentbuffers) {
+  for (auto &commandbuffer : RendererImpl::instance().presentbuffers) {
     commandbuffer = std::move(
-        context::device()
+        ContextImpl::device()
             .allocateCommandBuffersUnique(init_commandbuffer_alloc_info)
             .front());
   }
@@ -272,15 +257,15 @@ auto initialize_descriptorpool() -> bool {
       vk::DescriptorPoolCreateInfo{}.setPoolSizes(sizes).setMaxSets(
           total_count);
 
-  instance().pipe.pool =
-      context::device().createDescriptorPoolUnique(pool_info);
+  RendererImpl::instance().pipe.pool =
+      ContextImpl::device().createDescriptorPoolUnique(pool_info);
 
   return true;
 }
 
-auto initialize_mainpass_attachments(InitializeInfo &info) -> bool {
-  instance().mainpass.extent =
-      vk::Extent2D{}.setWidth(info.width).setHeight(info.height);
+auto initialize_mainpass_attachments(const InitializeConfig &config) -> bool {
+  RendererImpl::instance().mainpass.extent =
+      vk::Extent2D{}.setWidth(config.width).setHeight(config.height);
 
   for (std::size_t i = 0; i < frames_in_flight; i++) {
     const auto color_usage = vk::ImageUsageFlagBits::eTransferDst |
@@ -288,18 +273,18 @@ auto initialize_mainpass_attachments(InitializeInfo &info) -> bool {
                              vk::ImageUsageFlagBits::eSampled |
                              vk::ImageUsageFlagBits::eColorAttachment;
 
-    instance().mainpass.color_attachments.emplace_back(
-        instance().mainpass.extent, color_usage, vk::Format::eR8G8B8A8Srgb,
-        vk::ImageAspectFlagBits::eColor);
+    RendererImpl::instance().mainpass.color_attachments.emplace_back(
+        RendererImpl::instance().mainpass.extent, color_usage,
+        vk::Format::eR8G8B8A8Srgb, vk::ImageAspectFlagBits::eColor);
 
     const auto depth_usage = vk::ImageUsageFlagBits::eTransferDst |
                              vk::ImageUsageFlagBits::eTransferSrc |
                              vk::ImageUsageFlagBits::eSampled |
                              vk::ImageUsageFlagBits::eDepthStencilAttachment;
 
-    instance().mainpass.depth_attachments.emplace_back(
-        instance().mainpass.extent, depth_usage, vk::Format::eD32Sfloat,
-        vk::ImageAspectFlagBits::eDepth);
+    RendererImpl::instance().mainpass.depth_attachments.emplace_back(
+        RendererImpl::instance().mainpass.extent, depth_usage,
+        vk::Format::eD32Sfloat, vk::ImageAspectFlagBits::eDepth);
   }
 
   return true;
@@ -369,24 +354,24 @@ auto initialize_mainpass() -> bool {
                                         .setDependencies(dependencies)
                                         .setSubpasses(subpass);
 
-  instance().mainpass.renderpass =
-      context::device().createRenderPassUnique(renderPassCreateInfo);
+  RendererImpl::instance().mainpass.renderpass =
+      ContextImpl::device().createRenderPassUnique(renderPassCreateInfo);
 
   for (std::size_t i = 0; i < frames_in_flight; i++) {
-    const auto attachments =
-        std::array{instance().mainpass.color_attachments[i].view(),
-                   instance().mainpass.depth_attachments[i].view()};
+    const auto attachments = std::array{
+        RendererImpl::instance().mainpass.color_attachments[i].view(),
+        RendererImpl::instance().mainpass.depth_attachments[i].view()};
 
     auto framebuffer_info =
         vk::FramebufferCreateInfo{}
             .setAttachments(attachments)
-            .setWidth(instance().mainpass.extent.width)
-            .setHeight(instance().mainpass.extent.height)
+            .setWidth(RendererImpl::instance().mainpass.extent.width)
+            .setHeight(RendererImpl::instance().mainpass.extent.height)
             .setLayers(1)
-            .setRenderPass(instance().mainpass.renderpass.get());
+            .setRenderPass(RendererImpl::instance().mainpass.renderpass.get());
 
-    instance().mainpass.framebuffers.push_back(
-        context::device().createFramebufferUnique(framebuffer_info));
+    RendererImpl::instance().mainpass.framebuffers.push_back(
+        ContextImpl::device().createFramebufferUnique(framebuffer_info));
   }
 
   return true;
@@ -404,9 +389,9 @@ auto initialize_flatcolor_pipe() -> bool {
           .setCode(embedded_shaders::flatcolor_frag::spirv);
 
   auto vertex_module =
-      context::device().createShaderModuleUnique(vertex_module_info);
+      ContextImpl::device().createShaderModuleUnique(vertex_module_info);
   auto fragment_module =
-      context::device().createShaderModuleUnique(fragment_module_info);
+      ContextImpl::device().createShaderModuleUnique(fragment_module_info);
 
   const auto shaderstage_infos =
       std::array{vk::PipelineShaderStageCreateInfo{}
@@ -465,8 +450,10 @@ auto initialize_flatcolor_pipe() -> bool {
       vk::Viewport{}
           .setX(0.0f)
           .setY(0.0f)
-          .setWidth(static_cast<float>(instance().mainpass.extent.width))
-          .setHeight(static_cast<float>(instance().mainpass.extent.height))
+          .setWidth(static_cast<float>(
+              RendererImpl::instance().mainpass.extent.width))
+          .setHeight(static_cast<float>(
+              RendererImpl::instance().mainpass.extent.height))
           .setMinDepth(0.0f)
           .setMaxDepth(1.0f);
 
@@ -535,17 +522,18 @@ auto initialize_flatcolor_pipe() -> bool {
           .setFlags(vk::DescriptorSetLayoutCreateFlags())
           .setBindings(modelinfo_bindings);
 
-  instance().pipe.flatcolor.modelinfo_layout =
-      context::device().createDescriptorSetLayoutUnique(modelinfo_layout_info,
-                                                        nullptr);
+  RendererImpl::instance().pipe.flatcolor.modelinfo_layout =
+      ContextImpl::device().createDescriptorSetLayoutUnique(
+          modelinfo_layout_info, nullptr);
 
   auto layout_info =
       vk::PipelineLayoutCreateInfo{}
           .setFlags(vk::PipelineLayoutCreateFlags())
-          .setSetLayouts(instance().pipe.flatcolor.modelinfo_layout.get());
+          .setSetLayouts(
+              RendererImpl::instance().pipe.flatcolor.modelinfo_layout.get());
 
-  instance().pipe.flatcolor.layout =
-      context::device().createPipelineLayoutUnique(layout_info, nullptr);
+  RendererImpl::instance().pipe.flatcolor.layout =
+      ContextImpl::device().createPipelineLayoutUnique(layout_info, nullptr);
 
   auto depth_stencil_state_info = vk::PipelineDepthStencilStateCreateInfo{}
                                       .setDepthTestEnable(true)
@@ -556,57 +544,60 @@ auto initialize_flatcolor_pipe() -> bool {
                                       .setMaxDepthBounds(1.0f)
                                       .setStencilTestEnable(false);
 
-  auto pipeline_info = vk::GraphicsPipelineCreateInfo{}
-                           .setFlags(vk::PipelineCreateFlags())
-                           .setStages(shaderstage_infos)
-                           .setPVertexInputState(&vertex_input_state_info)
-                           .setPInputAssemblyState(&input_assembly_state_info)
-                           .setPTessellationState(nullptr)
-                           .setPViewportState(&viewport_state_info)
-                           .setPRasterizationState(&rasterization_state_info)
-                           .setPMultisampleState(&multisample_state_info)
-                           .setPDepthStencilState(&depth_stencil_state_info)
-                           .setPColorBlendState(&color_blend_state_info)
-                           .setPDynamicState(&dynamic_state_info)
-                           .setLayout(instance().pipe.flatcolor.layout.get())
-                           .setRenderPass(instance().mainpass.renderpass.get());
+  auto pipeline_info =
+      vk::GraphicsPipelineCreateInfo{}
+          .setFlags(vk::PipelineCreateFlags())
+          .setStages(shaderstage_infos)
+          .setPVertexInputState(&vertex_input_state_info)
+          .setPInputAssemblyState(&input_assembly_state_info)
+          .setPTessellationState(nullptr)
+          .setPViewportState(&viewport_state_info)
+          .setPRasterizationState(&rasterization_state_info)
+          .setPMultisampleState(&multisample_state_info)
+          .setPDepthStencilState(&depth_stencil_state_info)
+          .setPColorBlendState(&color_blend_state_info)
+          .setPDynamicState(&dynamic_state_info)
+          .setLayout(RendererImpl::instance().pipe.flatcolor.layout.get())
+          .setRenderPass(RendererImpl::instance().mainpass.renderpass.get());
 
-  auto result =
-      context::device().createGraphicsPipelineUnique(nullptr, pipeline_info);
+  auto result = ContextImpl::device().createGraphicsPipelineUnique(
+      nullptr, pipeline_info);
 
   if (result.result != vk::Result::eSuccess) {
     LOG_ERROR("Could not create graphics pipeline");
     return false;
   }
 
-  instance().pipe.flatcolor.pipeline = std::move(result.value);
+  RendererImpl::instance().pipe.flatcolor.pipeline = std::move(result.value);
   return true;
 }
 
 auto initialize_flatcolor_sets() -> bool {
-  instance().pipe.flatcolor.modelinfo_sets.resize(2);
+  RendererImpl::instance().pipe.flatcolor.modelinfo_sets.resize(2);
   std::vector<vk::WriteDescriptorSet> writes;
   for (std::size_t i = 0; i < frames_in_flight; i++) {
     const auto alloc_info =
         vk::DescriptorSetAllocateInfo{}
             .setDescriptorSetCount(1)
-            .setDescriptorPool(instance().pipe.pool.get())
-            .setSetLayouts(instance().pipe.flatcolor.modelinfo_layout.get())
-            .setDescriptorPool(instance().pipe.pool.get());
+            .setDescriptorPool(RendererImpl::instance().pipe.pool.get())
+            .setSetLayouts(
+                RendererImpl::instance().pipe.flatcolor.modelinfo_layout.get())
+            .setDescriptorPool(RendererImpl::instance().pipe.pool.get());
 
-    instance().pipe.flatcolor.modelinfo_sets[i] =
-        context::device().allocateDescriptorSets(alloc_info).front();
+    RendererImpl::instance().pipe.flatcolor.modelinfo_sets[i] =
+        ContextImpl::device().allocateDescriptorSets(alloc_info).front();
 
     const auto buffer_info =
         vk::DescriptorBufferInfo{}
-            .setBuffer(instance().uniform_arenas[i].buffer())
+            .setBuffer(RendererImpl::instance().uniform_arenas[i].buffer())
             .setRange(sizeof(FlatColorUniform))
             .setOffset(0);
 
     const auto write =
         vk::WriteDescriptorSet{}
             .setDescriptorType(vk::DescriptorType::eUniformBufferDynamic)
-            .setDstSet(instance().pipe.flatcolor.modelinfo_sets[i])
+            .setDstSet(
+                RendererImpl::instance().pipe.flatcolor.modelinfo_sets[i])
             .setDstBinding(0)
             .setDescriptorCount(1)
             .setBufferInfo(buffer_info);
@@ -614,8 +605,8 @@ auto initialize_flatcolor_sets() -> bool {
     writes.push_back(write);
   }
 
-  context::device().updateDescriptorSets(writes.size(), writes.data(), 0,
-                                         nullptr);
+  ContextImpl::device().updateDescriptorSets(writes.size(), writes.data(), 0,
+                                             nullptr);
   return true;
 }
 
@@ -631,9 +622,9 @@ auto initialize_texture_pipe() -> bool {
           .setCode(embedded_shaders::texture_frag::spirv);
 
   auto vertex_module =
-      context::device().createShaderModuleUnique(vertex_module_info);
+      ContextImpl::device().createShaderModuleUnique(vertex_module_info);
   auto fragment_module =
-      context::device().createShaderModuleUnique(fragment_module_info);
+      ContextImpl::device().createShaderModuleUnique(fragment_module_info);
 
   const auto shaderstage_infos =
       std::array{vk::PipelineShaderStageCreateInfo{}
@@ -692,8 +683,10 @@ auto initialize_texture_pipe() -> bool {
       vk::Viewport{}
           .setX(0.0f)
           .setY(0.0f)
-          .setWidth(static_cast<float>(instance().mainpass.extent.width))
-          .setHeight(static_cast<float>(instance().mainpass.extent.height))
+          .setWidth(static_cast<float>(
+              RendererImpl::instance().mainpass.extent.width))
+          .setHeight(static_cast<float>(
+              RendererImpl::instance().mainpass.extent.height))
           .setMinDepth(0.0f)
           .setMaxDepth(1.0f);
 
@@ -762,9 +755,9 @@ auto initialize_texture_pipe() -> bool {
           .setFlags(vk::DescriptorSetLayoutCreateFlags())
           .setBindings(modelinfo_bindings);
 
-  instance().pipe.texture.modelinfo_layout =
-      context::device().createDescriptorSetLayoutUnique(modelinfo_layout_info,
-                                                        nullptr);
+  RendererImpl::instance().pipe.texture.modelinfo_layout =
+      ContextImpl::device().createDescriptorSetLayoutUnique(
+          modelinfo_layout_info, nullptr);
 
   const auto diffuse_bindings = std::array{
       vk::DescriptorSetLayoutBinding{}
@@ -779,20 +772,20 @@ auto initialize_texture_pipe() -> bool {
           .setFlags(vk::DescriptorSetLayoutCreateFlags())
           .setBindings(diffuse_bindings);
 
-  instance().pipe.texture.diffuse_layout =
-      context::device().createDescriptorSetLayoutUnique(diffuse_layout_info,
-                                                        nullptr);
+  RendererImpl::instance().pipe.texture.diffuse_layout =
+      ContextImpl::device().createDescriptorSetLayoutUnique(diffuse_layout_info,
+                                                            nullptr);
 
   const auto set_layouts =
-      std::array{instance().pipe.texture.modelinfo_layout.get(),
-                 instance().pipe.texture.diffuse_layout.get()};
+      std::array{RendererImpl::instance().pipe.texture.modelinfo_layout.get(),
+                 RendererImpl::instance().pipe.texture.diffuse_layout.get()};
 
   const auto layout_info = vk::PipelineLayoutCreateInfo{}
                                .setFlags(vk::PipelineLayoutCreateFlags())
                                .setSetLayouts(set_layouts);
 
-  instance().pipe.texture.layout =
-      context::device().createPipelineLayoutUnique(layout_info, nullptr);
+  RendererImpl::instance().pipe.texture.layout =
+      ContextImpl::device().createPipelineLayoutUnique(layout_info, nullptr);
 
   auto depth_stencil_state_info = vk::PipelineDepthStencilStateCreateInfo{}
                                       .setDepthTestEnable(true)
@@ -803,57 +796,59 @@ auto initialize_texture_pipe() -> bool {
                                       .setMaxDepthBounds(1.0f)
                                       .setStencilTestEnable(false);
 
-  auto pipeline_info = vk::GraphicsPipelineCreateInfo{}
-                           .setFlags(vk::PipelineCreateFlags())
-                           .setStages(shaderstage_infos)
-                           .setPVertexInputState(&vertex_input_state_info)
-                           .setPInputAssemblyState(&input_assembly_state_info)
-                           .setPTessellationState(nullptr)
-                           .setPViewportState(&viewport_state_info)
-                           .setPRasterizationState(&rasterization_state_info)
-                           .setPMultisampleState(&multisample_state_info)
-                           .setPDepthStencilState(&depth_stencil_state_info)
-                           .setPColorBlendState(&color_blend_state_info)
-                           .setPDynamicState(&dynamic_state_info)
-                           .setLayout(instance().pipe.texture.layout.get())
-                           .setRenderPass(instance().mainpass.renderpass.get());
+  auto pipeline_info =
+      vk::GraphicsPipelineCreateInfo{}
+          .setFlags(vk::PipelineCreateFlags())
+          .setStages(shaderstage_infos)
+          .setPVertexInputState(&vertex_input_state_info)
+          .setPInputAssemblyState(&input_assembly_state_info)
+          .setPTessellationState(nullptr)
+          .setPViewportState(&viewport_state_info)
+          .setPRasterizationState(&rasterization_state_info)
+          .setPMultisampleState(&multisample_state_info)
+          .setPDepthStencilState(&depth_stencil_state_info)
+          .setPColorBlendState(&color_blend_state_info)
+          .setPDynamicState(&dynamic_state_info)
+          .setLayout(RendererImpl::instance().pipe.texture.layout.get())
+          .setRenderPass(RendererImpl::instance().mainpass.renderpass.get());
 
-  auto result =
-      context::device().createGraphicsPipelineUnique(nullptr, pipeline_info);
+  auto result = ContextImpl::device().createGraphicsPipelineUnique(
+      nullptr, pipeline_info);
 
   if (result.result != vk::Result::eSuccess) {
     LOG_ERROR("Could not create graphics pipeline");
     return false;
   }
 
-  instance().pipe.texture.pipeline = std::move(result.value);
+  RendererImpl::instance().pipe.texture.pipeline = std::move(result.value);
   return true;
 }
 
 auto initialize_texture_sets() -> bool {
-  instance().pipe.texture.modelinfo_sets.resize(2);
+  RendererImpl::instance().pipe.texture.modelinfo_sets.resize(2);
   std::vector<vk::WriteDescriptorSet> writes;
   for (std::size_t i = 0; i < frames_in_flight; i++) {
     const auto alloc_info =
         vk::DescriptorSetAllocateInfo{}
             .setDescriptorSetCount(1)
-            .setDescriptorPool(instance().pipe.pool.get())
-            .setSetLayouts(instance().pipe.texture.modelinfo_layout.get())
-            .setDescriptorPool(instance().pipe.pool.get());
+            .setDescriptorPool(RendererImpl::instance().pipe.pool.get())
+            .setSetLayouts(
+                RendererImpl::instance().pipe.texture.modelinfo_layout.get())
+            .setDescriptorPool(RendererImpl::instance().pipe.pool.get());
 
-    instance().pipe.texture.modelinfo_sets[i] =
-        context::device().allocateDescriptorSets(alloc_info).front();
+    RendererImpl::instance().pipe.texture.modelinfo_sets[i] =
+        ContextImpl::device().allocateDescriptorSets(alloc_info).front();
 
     const auto buffer_info =
         vk::DescriptorBufferInfo{}
-            .setBuffer(instance().uniform_arenas[i].buffer())
+            .setBuffer(RendererImpl::instance().uniform_arenas[i].buffer())
             .setRange(sizeof(TextureUniform))
             .setOffset(0);
 
     const auto write =
         vk::WriteDescriptorSet{}
             .setDescriptorType(vk::DescriptorType::eUniformBufferDynamic)
-            .setDstSet(instance().pipe.texture.modelinfo_sets[i])
+            .setDstSet(RendererImpl::instance().pipe.texture.modelinfo_sets[i])
             .setDstBinding(0)
             .setDescriptorCount(1)
             .setBufferInfo(buffer_info);
@@ -861,13 +856,13 @@ auto initialize_texture_sets() -> bool {
     writes.push_back(write);
   }
 
-  context::device().updateDescriptorSets(writes.size(), writes.data(), 0,
-                                         nullptr);
+  ContextImpl::device().updateDescriptorSets(writes.size(), writes.data(), 0,
+                                             nullptr);
   return true;
 }
 
 auto initialize_frames() -> bool {
-  instance().frames.resize(frames_in_flight);
+  RendererImpl::instance().frames.resize(frames_in_flight);
 
   const auto diffuse_sets_count = 100;
   const auto sizes =
@@ -879,17 +874,23 @@ auto initialize_frames() -> bool {
       vk::DescriptorPoolCreateInfo{}.setPoolSizes(sizes).setMaxSets(
           diffuse_sets_count);
 
-  for (auto &frame : instance().frames) {
+  for (auto &frame : RendererImpl::instance().frames) {
     frame.diffuse_pool =
-        context::device().createDescriptorPoolUnique(pool_info);
+        ContextImpl::device().createDescriptorPoolUnique(pool_info);
   }
 
   return true;
 }
 
+auto Renderer::destroy() -> void { g_instance.reset(); }
+
 [[nodiscard]]
-auto initialize(InitializeInfo &info) -> bool {
-  singleton::ginstance = std::make_unique<Instance>();
+auto Renderer::initialize(const InitializeConfig &config) -> bool {
+  if (g_instance != nullptr) {
+    destroy();
+  }
+
+  g_instance.reset(new RendererImpl);
 
   if (!initialize_rendergraphs()) {
     return false;
@@ -899,7 +900,7 @@ auto initialize(InitializeInfo &info) -> bool {
     return false;
   }
 
-  if (!initialize_swapchain(info)) {
+  if (!initialize_swapchain(config)) {
     return false;
   }
 
@@ -919,7 +920,7 @@ auto initialize(InitializeInfo &info) -> bool {
     return false;
   }
 
-  if (!initialize_mainpass_attachments(info)) {
+  if (!initialize_mainpass_attachments(config)) {
     return false;
   }
 
@@ -950,57 +951,68 @@ auto initialize(InitializeInfo &info) -> bool {
   return true;
 }
 
-auto destroy() -> void { singleton::ginstance = nullptr; }
-
 auto wait_for_next_frame() -> void {
   const auto fences =
-      std::array{instance().in_flight[instance().flightframe].get()};
+      std::array{RendererImpl::instance()
+                     .in_flight[RendererImpl::instance().flightframe]
+                     .get()};
   const auto max_wait = std::numeric_limits<unsigned int>::max();
   vk::Result wait_result =
-      context::device().waitForFences(fences, true, max_wait);
+      ContextImpl::device().waitForFences(fences, true, max_wait);
   if (wait_result != vk::Result::eSuccess) {
     LOG_ERROR("Could not wait for swapchain");
   }
 
-  context::device().resetFences(fences);
+  ContextImpl::device().resetFences(fences);
   const auto max_acquire_wait = std::numeric_limits<uint64_t>::max();
-  auto result = context::device().acquireNextImageKHR(
-      instance().swapchain.get(), max_acquire_wait,
-      instance().image_available[instance().flightframe].get(), nullptr);
+  auto result = ContextImpl::device().acquireNextImageKHR(
+      RendererImpl::instance().swapchain.get(), max_acquire_wait,
+      RendererImpl::instance()
+          .image_available[RendererImpl::instance().flightframe]
+          .get(),
+      nullptr);
 
   if (result.result != vk::Result::eSuccess) {
     LOG_ERROR("Could not acquire next image from swapchain");
   }
 
-  instance().image_index = result.value;
+  RendererImpl::instance().image_index = result.value;
 }
 
-auto begin_frame() -> void {
+auto Renderer::begin_frame() -> void {
   wait_for_next_frame();
 
-  const auto duration = instance().deltatime_timer.stop();
+  const auto duration = RendererImpl::instance().deltatime_timer.stop();
 
   if (duration.has_value()) {
-    instance().deltatime = duration.value().count();
+    RendererImpl::instance().deltatime = duration.value().count();
   }
 
-  instance().deltatime_timer.start();
-  instance().frames[instance().flightframe].drawflatcolor.clear();
-  instance().frames[instance().flightframe].drawtexture.clear();
-  instance().frames[instance().flightframe].texture_diffuse_sets.reset();
-  context::device().resetDescriptorPool(
-      instance().frames[instance().flightframe].diffuse_pool.get());
+  RendererImpl::instance().deltatime_timer.start();
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .drawflatcolor.clear();
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .drawtexture.clear();
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .texture_diffuse_sets.reset();
+  ContextImpl::device().resetDescriptorPool(
+      RendererImpl::instance()
+          .frames[RendererImpl::instance().flightframe]
+          .diffuse_pool.get());
 }
 
 auto view_matrix() -> glm::mat4 {
-  const auto camera = instance().camera;
+  const auto camera = RendererImpl::instance().camera;
   const auto target = camera.position() + camera.forward();
   return glm::lookAt(camera.position(), target, camera.up());
 }
 
 auto projection_matrix() -> glm::mat4 {
-  const auto camera = instance().camera;
-  const auto extent = instance().mainpass.extent;
+  const auto camera = RendererImpl::instance().camera;
+  const auto extent = RendererImpl::instance().mainpass.extent;
   float aspect =
       static_cast<float>(extent.width) / static_cast<float>(extent.height);
   glm::mat4 proj =
@@ -1009,20 +1021,24 @@ auto projection_matrix() -> glm::mat4 {
   return proj;
 }
 
-auto end_frame() -> void {
-  instance().uniform_arenas[instance().flightframe].reset();
+auto Renderer::end_frame() -> void {
+  RendererImpl::instance()
+      .uniform_arenas[RendererImpl::instance().flightframe]
+      .reset();
 
   const auto draw_task = TaskID{0};
-  TaskGraph &rendergraph = instance().rendergraphs[instance().flightframe];
+  TaskGraph &rendergraph =
+      RendererImpl::instance()
+          .rendergraphs[RendererImpl::instance().flightframe];
   rendergraph = TaskGraph{};
   rendergraph.set_end(draw_task);
   rendergraph.add_task(draw_task, [&](vk::CommandBuffer commandbuffer) {
     const auto render_area =
         vk::Rect2D{}
             .setOffset(vk::Offset2D{}.setX(0.0f).setY(0.0f))
-            .setExtent(instance().mainpass.extent);
+            .setExtent(RendererImpl::instance().mainpass.extent);
 
-    auto clearcolor = instance().clearcolor;
+    auto clearcolor = RendererImpl::instance().clearcolor;
 
     const auto clearvalues = std::array<vk::ClearValue, 2>{
         vk::ClearColorValue{static_cast<float>(clearcolor.r) / 255.0f,
@@ -1033,15 +1049,17 @@ auto end_frame() -> void {
 
     const auto renderpass_begin_info =
         vk::RenderPassBeginInfo{}
-            .setRenderPass(instance().mainpass.renderpass.get())
+            .setRenderPass(RendererImpl::instance().mainpass.renderpass.get())
             .setFramebuffer(
-                instance().mainpass.framebuffers[instance().flightframe].get())
+                RendererImpl::instance()
+                    .mainpass.framebuffers[RendererImpl::instance().flightframe]
+                    .get())
             .setRenderArea(render_area)
             .setClearValues(clearvalues);
 
     commandbuffer.beginRenderPass(renderpass_begin_info,
                                   vk::SubpassContents::eInline);
-    const auto extent = instance().mainpass.extent;
+    const auto extent = RendererImpl::instance().mainpass.extent;
 
     const auto viewport = vk::Viewport{}
                               .setX(0)
@@ -1056,13 +1074,15 @@ auto end_frame() -> void {
 
     commandbuffer.setViewport(0, viewport);
     commandbuffer.setScissor(0, scissor);
-    commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
-                               instance().pipe.flatcolor.pipeline.get());
+    commandbuffer.bindPipeline(
+        vk::PipelineBindPoint::eGraphics,
+        RendererImpl::instance().pipe.flatcolor.pipeline.get());
 
-    auto &drawflatcolor =
-        instance().frames[instance().flightframe].drawflatcolor;
+    auto &drawflatcolor = RendererImpl::instance()
+                              .frames[RendererImpl::instance().flightframe]
+                              .drawflatcolor;
     for (auto &command : drawflatcolor) {
-      auto *mesh = resources::get(command.mesh);
+      auto *mesh = ResourcesImpl::instance().get(command.mesh);
       if (!mesh) {
 
         LOG_ERROR("Got invalid mesh in draw commands");
@@ -1092,8 +1112,9 @@ auto end_frame() -> void {
         flatcoloruniform.projection = projection_matrix();
 
         auto allocation =
-            instance().uniform_arenas[instance().flightframe].allocate(
-                sizeof(flatcoloruniform));
+            RendererImpl::instance()
+                .uniform_arenas[RendererImpl::instance().flightframe]
+                .allocate(sizeof(flatcoloruniform));
         if (!allocation.has_value()) {
           LOG_ERROR("Ran out of uniform arena memory");
           continue;
@@ -1102,10 +1123,13 @@ auto end_frame() -> void {
         std::memcpy(allocation->ptr, &flatcoloruniform,
                     sizeof(flatcoloruniform));
 
-        const auto layout = instance().pipe.flatcolor.layout.get();
+        const auto layout =
+            RendererImpl::instance().pipe.flatcolor.layout.get();
         const auto first_set = std::uint32_t{0};
         const auto sets = std::array{
-            instance().pipe.flatcolor.modelinfo_sets[instance().flightframe]};
+            RendererImpl::instance()
+                .pipe.flatcolor
+                .modelinfo_sets[RendererImpl::instance().flightframe]};
         const auto dynamic_offsets =
             std::array{static_cast<std::uint32_t>(allocation->dynamic_offset)};
         commandbuffer.bindDescriptorSets(
@@ -1118,19 +1142,22 @@ auto end_frame() -> void {
       commandbuffer.drawIndexed(mesh->indices_count, 1, 0, 0, 0);
     }
 
-    commandbuffer.bindPipeline(vk::PipelineBindPoint::eGraphics,
-                               instance().pipe.texture.pipeline.get());
+    commandbuffer.bindPipeline(
+        vk::PipelineBindPoint::eGraphics,
+        RendererImpl::instance().pipe.texture.pipeline.get());
 
-    auto &drawtexture = instance().frames[instance().flightframe].drawtexture;
+    auto &drawtexture = RendererImpl::instance()
+                            .frames[RendererImpl::instance().flightframe]
+                            .drawtexture;
     for (auto &command : drawtexture) {
-      auto *mesh = resources::get(command.mesh);
+      auto *mesh = ResourcesImpl::instance().get(command.mesh);
       if (!mesh) {
 
         LOG_ERROR("Got invalid mesh in draw commands");
         continue;
       }
 
-      auto *diffuse = resources::get(command.diffuse);
+      auto *diffuse = ResourcesImpl::instance().get(command.diffuse);
       if (!diffuse) {
 
         LOG_ERROR("Got invalid diffuse in draw commands");
@@ -1140,20 +1167,22 @@ auto end_frame() -> void {
       const auto key =
           hash_combine({command.diffuse.index(), command.diffuse.generation()});
 
-      auto *diffuse_set =
-          instance().frames[instance().flightframe].texture_diffuse_sets.find(
-              key);
+      auto *diffuse_set = RendererImpl::instance()
+                              .frames[RendererImpl::instance().flightframe]
+                              .texture_diffuse_sets.find(key);
       if (diffuse_set == nullptr) {
         const auto allocate_info =
             vk::DescriptorSetAllocateInfo{}
-                .setDescriptorPool(instance()
-                                       .frames[instance().flightframe]
-                                       .diffuse_pool.get())
+                .setDescriptorPool(
+                    RendererImpl::instance()
+                        .frames[RendererImpl::instance().flightframe]
+                        .diffuse_pool.get())
                 .setDescriptorSetCount(1)
-                .setSetLayouts(instance().pipe.texture.diffuse_layout.get());
+                .setSetLayouts(
+                    RendererImpl::instance().pipe.texture.diffuse_layout.get());
 
         auto allocated =
-            context::device().allocateDescriptorSets(allocate_info);
+            ContextImpl::device().allocateDescriptorSets(allocate_info);
 
         if (!diffuse->texture.sampler().has_value()) {
           diffuse->texture.make_sampler();
@@ -1174,14 +1203,15 @@ auto end_frame() -> void {
                 .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
                 .setImageInfo(image_info)};
 
-        context::device().updateDescriptorSets(writes.size(), writes.data(), 0,
-                                               nullptr);
+        ContextImpl::device().updateDescriptorSets(writes.size(), writes.data(),
+                                                   0, nullptr);
 
-        instance().frames[instance().flightframe].texture_diffuse_sets.insert(
-            key, allocated[0]);
-        diffuse_set =
-            instance().frames[instance().flightframe].texture_diffuse_sets.find(
-                key);
+        RendererImpl::instance()
+            .frames[RendererImpl::instance().flightframe]
+            .texture_diffuse_sets.insert(key, allocated[0]);
+        diffuse_set = RendererImpl::instance()
+                          .frames[RendererImpl::instance().flightframe]
+                          .texture_diffuse_sets.find(key);
       }
 
       if (diffuse_set == nullptr) {
@@ -1189,7 +1219,7 @@ auto end_frame() -> void {
       }
 
       {
-        const auto layout = instance().pipe.texture.layout.get();
+        const auto layout = RendererImpl::instance().pipe.texture.layout.get();
         const auto first_set = std::uint32_t{1};
         const auto sets = std::array{*diffuse_set};
         commandbuffer.bindDescriptorSets(
@@ -1216,8 +1246,9 @@ auto end_frame() -> void {
         uniform.projection = projection_matrix();
 
         auto allocation =
-            instance().uniform_arenas[instance().flightframe].allocate(
-                sizeof(uniform));
+            RendererImpl::instance()
+                .uniform_arenas[RendererImpl::instance().flightframe]
+                .allocate(sizeof(uniform));
         if (!allocation.has_value()) {
           LOG_ERROR("Ran out of uniform arena memory");
           continue;
@@ -1225,10 +1256,12 @@ auto end_frame() -> void {
 
         std::memcpy(allocation->ptr, &uniform, sizeof(uniform));
 
-        const auto layout = instance().pipe.texture.layout.get();
+        const auto layout = RendererImpl::instance().pipe.texture.layout.get();
         const auto first_set = std::uint32_t{0};
         const auto sets = std::array{
-            instance().pipe.texture.modelinfo_sets[instance().flightframe]};
+            RendererImpl::instance()
+                .pipe.texture
+                .modelinfo_sets[RendererImpl::instance().flightframe]};
         const auto dynamic_offsets =
             std::array{static_cast<std::uint32_t>(allocation->dynamic_offset)};
 
@@ -1248,7 +1281,9 @@ auto end_frame() -> void {
   auto rendergraph_finished_signal = rendergraph.evaluate();
 
   vk::CommandBuffer commandbuffer =
-      instance().presentbuffers[instance().flightframe].get();
+      RendererImpl::instance()
+          .presentbuffers[RendererImpl::instance().flightframe]
+          .get();
 
   commandbuffer.reset();
   auto begin_info = vk::CommandBufferBeginInfo{};
@@ -1264,7 +1299,9 @@ auto end_frame() -> void {
 
     auto barrier =
         vk::ImageMemoryBarrier{}
-            .setImage(instance().swapchain_images[instance().image_index])
+            .setImage(
+                RendererImpl::instance()
+                    .swapchain_images[RendererImpl::instance().image_index])
             .setSubresourceRange(range)
             .setOldLayout(vk::ImageLayout::eUndefined)
             .setNewLayout(vk::ImageLayout::eTransferDstOptimal)
@@ -1280,7 +1317,8 @@ auto end_frame() -> void {
   }
 
   Texture &texture_to_present =
-      instance().mainpass.color_attachments[instance().flightframe];
+      RendererImpl::instance()
+          .mainpass.color_attachments[RendererImpl::instance().flightframe];
 
   {
     auto range = vk::ImageSubresourceRange{}
@@ -1315,8 +1353,8 @@ auto end_frame() -> void {
     const auto src_offsets =
         std::array{vk::Offset3D{}.setX(0).setY(0).setZ(0),
                    vk::Offset3D{}
-                       .setX(instance().mainpass.extent.width)
-                       .setY(instance().mainpass.extent.height)
+                       .setX(RendererImpl::instance().mainpass.extent.width)
+                       .setY(RendererImpl::instance().mainpass.extent.height)
                        .setZ(1)};
 
     auto dst_subresource = vk::ImageSubresourceLayers{}
@@ -1328,8 +1366,8 @@ auto end_frame() -> void {
     const auto dst_offsets =
         std::array{vk::Offset3D{}.setX(0).setY(0).setZ(0),
                    vk::Offset3D{}
-                       .setX(instance().mainpass.extent.width)
-                       .setY(instance().mainpass.extent.height)
+                       .setX(RendererImpl::instance().mainpass.extent.width)
+                       .setY(RendererImpl::instance().mainpass.extent.height)
                        .setZ(1)};
 
     auto image_blit = vk::ImageBlit{}
@@ -1340,7 +1378,8 @@ auto end_frame() -> void {
 
     commandbuffer.blitImage(
         texture_to_present.image(), vk::ImageLayout::eTransferSrcOptimal,
-        instance().swapchain_images[instance().image_index],
+        RendererImpl::instance()
+            .swapchain_images[RendererImpl::instance().image_index],
         vk::ImageLayout::eTransferDstOptimal, image_blit, vk::Filter::eLinear);
   }
   {
@@ -1355,7 +1394,9 @@ auto end_frame() -> void {
 
     auto to_present_barrier =
         vk::ImageMemoryBarrier{}
-            .setImage(instance().swapchain_images[instance().image_index])
+            .setImage(
+                RendererImpl::instance()
+                    .swapchain_images[RendererImpl::instance().image_index])
             .setSubresourceRange(to_present_range)
             .setOldLayout(vk::ImageLayout::eTransferDstOptimal)
             .setNewLayout(vk::ImageLayout::ePresentSrcKHR)
@@ -1372,25 +1413,31 @@ auto end_frame() -> void {
   commandbuffer.end();
 
   const auto wait_semaphores =
-      std::array{instance().image_available[instance().flightframe].get(),
+      std::array{RendererImpl::instance()
+                     .image_available[RendererImpl::instance().flightframe]
+                     .get(),
                  rendergraph_finished_signal};
   const auto wait_dst_stage_masks = std::array<vk::PipelineStageFlags, 2>{
       vk::PipelineStageFlagBits::eColorAttachmentOutput,
       vk::PipelineStageFlagBits::eTopOfPipe};
 
   const auto queue_signal_semaphores =
-      std::array{instance().render_finished[instance().image_index].get()};
+      std::array{RendererImpl::instance()
+                     .render_finished[RendererImpl::instance().image_index]
+                     .get()};
   auto submit_info = vk::SubmitInfo{}
                          .setWaitSemaphores(wait_semaphores)
                          .setWaitDstStageMask(wait_dst_stage_masks)
                          .setCommandBuffers({commandbuffer})
                          .setSignalSemaphores(queue_signal_semaphores);
 
-  context::instance().queue.submit(
-      submit_info, instance().in_flight[instance().flightframe].get());
+  ContextImpl::instance().queue.submit(
+      submit_info, RendererImpl::instance()
+                       .in_flight[RendererImpl::instance().flightframe]
+                       .get());
 
-  const auto swapchains = std::array{instance().swapchain.get()};
-  const auto image_indices = std::array{instance().image_index};
+  const auto swapchains = std::array{RendererImpl::instance().swapchain.get()};
+  const auto image_indices = std::array{RendererImpl::instance().image_index};
   const auto present_wait_semaphores = queue_signal_semaphores;
   const auto present_info = vk::PresentInfoKHR{}
                                 .setWaitSemaphores(present_wait_semaphores)
@@ -1398,27 +1445,39 @@ auto end_frame() -> void {
                                 .setImageIndices(image_indices);
 
   vk::Result present_result =
-      context::instance().queue.presentKHR(present_info);
+      ContextImpl::instance().queue.presentKHR(present_info);
   if (present_result != vk::Result::eSuccess) {
     LOG_ERROR("could not present frame");
   }
 
-  instance().flightframe = (instance().flightframe + 1) % frames_in_flight;
+  RendererImpl::instance().flightframe =
+      (RendererImpl::instance().flightframe + 1) % frames_in_flight;
 }
 
-auto set_clearcolor(Color color) -> void { instance().clearcolor = color; }
-
-auto set_camera(Camera camera) -> void { instance().camera = camera; }
-
-auto draw_flatcolor(glm::mat4 location, MeshRef mesh, Color color) -> void {
-  instance().frames[instance().flightframe].drawflatcolor.emplace_back(
-      location, mesh, color);
+auto Renderer::set_clearcolor(Color color) -> void {
+  RendererImpl::instance().clearcolor = color;
 }
 
-auto draw_textured(glm::mat4 location, MeshRef mesh, TextureRef texture)
+auto Renderer::set_camera(Camera camera) -> void {
+  RendererImpl::instance().camera = camera;
+}
+
+auto Renderer::draw_flatcolor(glm::mat4 location, MeshRef mesh, Color color)
     -> void {
-  instance().frames[instance().flightframe].drawtexture.emplace_back(
-      location, mesh, texture);
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .drawflatcolor.emplace_back(location, mesh, color);
 }
 
-} // namespace bubble::renderer
+auto Renderer::draw_textured(glm::mat4 location, MeshRef mesh,
+                             TextureRef texture) -> void {
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .drawtexture.emplace_back(location, mesh, texture);
+}
+
+auto Renderer::deltatime() -> std::optional<double> {
+  return RendererImpl::instance().deltatime;
+}
+
+} // namespace bubble

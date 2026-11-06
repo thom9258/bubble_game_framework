@@ -103,9 +103,10 @@ auto Mouse::update() -> void {
 
 auto Mouse::center_mouse_position() -> void {
   int width, height;
-  SDL_GetWindowSize(context::instance().window.get(), &width, &height);
+  SDL_GetWindowSize(ContextImpl::instance().window.get(), &width, &height);
   _position = glm::ivec2(width / 2, height / 2);
-  SDL_WarpMouseInWindow(context::instance().window.get(), _position.x, _position.y);
+  SDL_WarpMouseInWindow(ContextImpl::instance().window.get(), _position.x,
+                        _position.y);
 }
 
 auto Mouse::position() -> glm::ivec2 { return _position; }

@@ -63,25 +63,25 @@ auto TaskGraph::evaluate() -> vk::Semaphore {
   for (auto &dependency : _dependencies) {
     if (!dependency.semaphore) {
       dependency.semaphore =
-          context::device().createSemaphoreUnique(vk::SemaphoreCreateInfo{});
+          ContextImpl::device().createSemaphoreUnique(vk::SemaphoreCreateInfo{});
     }
   }
 
   const auto commandbuffer_info =
       vk::CommandBufferAllocateInfo{}
-          .setCommandPool(context::instance().commandpool.get())
+          .setCommandPool(ContextImpl::instance().commandpool.get())
           .setLevel(vk::CommandBufferLevel::ePrimary)
           .setCommandBufferCount(1);
 
   for (auto &task : _tasks) {
     task.commandbuffer =
-        std::move(context::device()
+        std::move(ContextImpl::device()
                       .allocateCommandBuffersUnique(commandbuffer_info)
                       .front());
   }
 
   _finished_signal =
-      context::device().createSemaphoreUnique(vk::SemaphoreCreateInfo{});
+      ContextImpl::device().createSemaphoreUnique(vk::SemaphoreCreateInfo{});
 
   struct Batch {
     std::vector<vk::Semaphore> wait_semaphores;
@@ -123,42 +123,7 @@ auto TaskGraph::evaluate() -> vk::Semaphore {
             .setSignalSemaphores(batches.back().signal_semaphores));
   }
 
-  context::instance().queue.submit(submits);
-
-#if 0
-  for (auto &task : _tasks) {
-    task.commandbuffer.value().get().begin(vk::CommandBufferBeginInfo{});
-    std::invoke(task.call, **task.commandbuffer);
-    task.commandbuffer.value().get().end();
-
-    const auto parent_dependencies = get_parent_dependencies(task.id);
-    std::vector<vk::Semaphore> wait_semaphores;
-    std::vector<vk::PipelineStageFlags> wait_dst_stage_masks;
-    for (Dependency *dependency : parent_dependencies) {
-      wait_semaphores.push_back(dependency->semaphore->get());
-      wait_dst_stage_masks.push_back(vk::PipelineStageFlagBits::eTopOfPipe);
-    }
-
-    const auto children_dependencies = get_child_dependencies(task.id);
-    std::vector<vk::Semaphore> signal_semaphores;
-    signal_semaphores.clear();
-    for (auto *dependency : children_dependencies) {
-      signal_semaphores.push_back(dependency->semaphore->get());
-    }
-
-    if (task.id == _end) {
-      signal_semaphores.push_back(_finished_signal.value().get());
-    }
-
-    const auto submit_info = vk::SubmitInfo{}
-                                 .setCommandBuffers(**task.commandbuffer)
-                                 .setWaitSemaphores(wait_semaphores)
-                                 .setWaitDstStageMask(wait_dst_stage_masks)
-                                 .setSignalSemaphores(signal_semaphores);
-
-    context::instance().queue.submit(submit_info);
-  }
-#endif
+  ContextImpl::instance().queue.submit(submits);
   return _finished_signal.value().get();
 }
 

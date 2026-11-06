@@ -1,7 +1,10 @@
 #include <bubble/bitmap.hpp>
-#include <bubble/bubble.hpp>
 #include <bubble/input.hpp>
 #include <bubble/timer.hpp>
+#include <bubble/context.hpp>
+#include <bubble/renderer.hpp>
+#include <bubble/resources.hpp>
+#include <bubble/bubble.hpp>
 
 #include <bubble/internal/glm.hpp>
 #include <bubble/internal/sdl.hpp>
@@ -53,29 +56,29 @@ int main(int argc, char **argv) {
   static_cast<void>(argc);
   static_cast<void>(argv);
 
+  auto bubble = bubble::Bubble<bubble::Context, bubble::Resources, bubble::Renderer>{};
+
   bubble::Timer init_timer;
   init_timer.start();
-  auto init_info = bubble::InitializeInfo{};
-  init_info.height = 600;
-  init_info.width = init_info.height * (4.0f / 3.0f);
-  const auto ok = bubble::initialize(init_info);
-  if (!ok) {
-    return 1;
-  }
+  auto config = bubble::InitializeConfig{};
+  config.height = 600;
+  config.width = config.height * (4.0f / 3.0f);
+  //const auto ok = bubble.initialize(config);
+  bubble.initialize(config);
 
   auto duration = init_timer.stop();
   if (duration.has_value()) {
-    std::println("Initialized '{}' {}x{} in {}s", init_info.name,
-                 init_info.width, init_info.height, duration.value().count());
+    std::println("Initialized '{}' {}x{} in {}s", config.name,
+                 config.width, config.height, duration.value().count());
   }
 
   auto [cube_vertices, cube_indices] = generateIndexedCube();
-  auto cube_mesh = bubble::create_mesh(cube_vertices, cube_indices);
+  auto cube_mesh = bubble::Resources::create_mesh(cube_vertices, cube_indices);
   if (!cube_mesh.has_value()) {
     return 1;
   }
 
-  bubble::set_clearcolor(bubble::color::pleasant_blue);
+  bubble::Renderer::set_clearcolor(bubble::color::pleasant_blue);
 
   auto camera =
       bubble::Camera(glm::vec3(0.0f, 0.0f, -3.0f), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -96,7 +99,7 @@ int main(int argc, char **argv) {
     }
   }
 
-  const auto error_texture = bubble::create_texture(error_bitmap);
+  const auto error_texture = bubble::Resources::create_texture(error_bitmap);
 
   auto button_focus = bubble::input::Button(SDLK_f);
   auto axis_x = bubble::input::Axis(SDLK_d, SDLK_a);
@@ -106,9 +109,9 @@ int main(int argc, char **argv) {
 
   auto should_run = true;
   while (should_run) {
-    bubble::begin_frame();
-    should_run = !bubble::requested_close();
-    const auto deltatime = bubble::deltatime().value_or(0.16f);
+    bubble.begin_frame();
+    should_run = !bubble::Context::requested_close();
+    const auto deltatime = bubble::Renderer::deltatime().value_or(0.16);
 
     mouse.update();
 
@@ -123,7 +126,7 @@ int main(int argc, char **argv) {
       const auto rotate_speed = 0.045f;
       const auto rotation = glm::vec2(static_cast<float>(mouse_delta.x),
                                       static_cast<float>(mouse_delta.y));
-      camera.rotate(rotation * rotate_speed * deltatime);
+      camera.rotate(rotation * rotate_speed * static_cast<float>(deltatime));
     }
 
     button_focus.update();
@@ -137,19 +140,20 @@ int main(int argc, char **argv) {
         glm::normalize(glm::vec3(axis_x.value(), 0.0f, axis_z.value()));
     if (glm::length(move_direction) > 0.1f) {
       const auto move_speed = 2.0f;
-      camera.translate_local(move_direction * deltatime * move_speed);
+      camera.translate_local(move_direction * static_cast<float>(deltatime) * move_speed);
     }
 
-    bubble::set_camera(camera);
-    bubble::draw_flatcolor(cube_location, *cube_mesh, cube_color);
+    bubble::Renderer::set_camera(camera);
 
-    bubble::draw_textured(
+    bubble::Renderer::draw_flatcolor(cube_location, *cube_mesh, cube_color);
+
+    bubble::Renderer::draw_textured(
         glm::translate(cube_location, glm::vec3(2.0f, 0.0f, 0.0f)), *cube_mesh,
         error_texture.value());
 
-    bubble::end_frame();
+    bubble.end_frame();
   }
 
-  bubble::destroy();
+  bubble.destroy();
   return 0;
 }

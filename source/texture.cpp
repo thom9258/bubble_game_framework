@@ -19,25 +19,25 @@ Texture::Texture(vk::Extent2D extent, vk::ImageUsageFlags usage,
           .setSharingMode(vk::SharingMode::eExclusive)
           .setSamples(vk::SampleCountFlagBits::e1);
 
-  _image = context::instance().device.get().createImageUnique(imageCreateInfo);
+  _image = ContextImpl::instance().device().createImageUnique(imageCreateInfo);
 
   vk::PhysicalDeviceMemoryProperties memProperties =
-      context::instance().physical_device.getMemoryProperties();
+      ContextImpl::instance().physical_device().getMemoryProperties();
 
   vk::MemoryRequirements memRequirements =
-      context::instance().device.get().getImageMemoryRequirements(_image.get());
+      ContextImpl::instance().device().getImageMemoryRequirements(_image.get());
 
-  const auto memoryTypeIndex =
-      context::find_memory_type(memProperties, memRequirements.memoryTypeBits,
-                                vk::MemoryPropertyFlagBits::eDeviceLocal);
+  const auto memoryTypeIndex = ContextImpl::find_memory_type(
+      memProperties, memRequirements.memoryTypeBits,
+      vk::MemoryPropertyFlagBits::eDeviceLocal);
 
   auto allocInfo = vk::MemoryAllocateInfo{}
                        .setAllocationSize(memRequirements.size)
                        .setMemoryTypeIndex(memoryTypeIndex);
   _memory =
-      context::instance().device.get().allocateMemoryUnique(allocInfo, nullptr);
+      ContextImpl::instance().device().allocateMemoryUnique(allocInfo, nullptr);
 
-  context::instance().device.get().bindImageMemory(_image.get(), _memory.get(),
+  ContextImpl::instance().device().bindImageMemory(_image.get(), _memory.get(),
                                                    0);
 
   auto subresourceRange = vk::ImageSubresourceRange{}
@@ -60,7 +60,7 @@ Texture::Texture(vk::Extent2D extent, vk::ImageUsageFlags usage,
                                  .setComponents(componentMapping)
                                  .setImage(_image.get());
 
-  _view = context::instance().device.get().createImageViewUnique(
+  _view = ContextImpl::instance().device().createImageViewUnique(
       imageViewCreateInfo);
 }
 
@@ -71,8 +71,8 @@ auto Texture::view() -> vk::ImageView { return _view.get(); }
 auto Texture::image() -> vk::Image { return _image.get(); }
 
 auto Texture::make_sampler() -> void {
-  const auto features = context::physical_device().getFeatures();
-  const auto properties = context::physical_device().getProperties();
+  const auto features = ContextImpl::physical_device().getFeatures();
+  const auto properties = ContextImpl::physical_device().getProperties();
   const auto max_anisotropy =
       features.samplerAnisotropy
           ? std::min(4.0f, properties.limits.maxSamplerAnisotropy)
@@ -97,7 +97,7 @@ auto Texture::make_sampler() -> void {
           .setMinLod(0.0f)
           .setMaxLod(0.0f);
 
-  _sampler = context::device().createSamplerUnique(sampler_info);
+  _sampler = ContextImpl::device().createSamplerUnique(sampler_info);
 }
 
 auto Texture::sampler() -> std::optional<vk::Sampler> {

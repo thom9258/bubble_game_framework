@@ -9,6 +9,30 @@
 
 namespace bubble {
 
+static std::unique_ptr<ResourcesImpl> m_instance{nullptr};
+
+auto ResourcesImpl::instance() -> ResourcesImpl & { return *m_instance; }
+
+[[nodiscard]]
+auto Resources::initialize(const InitializeConfig&) -> bool {
+  if (m_instance != nullptr) {
+    destroy();
+  }
+
+  m_instance.reset(new ResourcesImpl);
+  return true;
+}
+
+auto Resources::destroy() -> void { m_instance.reset(); }
+
+auto ResourcesImpl::get(MeshRef ref) -> MeshSource * {
+  return mesh_sources.get(Ref(ref.index(), ref.generation()));
+}
+
+auto ResourcesImpl::get(TextureRef ref) -> TextureSource * {
+  return texture_sources.get(Ref(ref.index(), ref.generation()));
+}
+
 MeshRef::MeshRef(std::uint32_t index, std::uint32_t generation)
     : _index{index}, _generation{generation} {}
 
@@ -16,7 +40,15 @@ auto MeshRef::index() const -> std::uint32_t { return _index; }
 
 auto MeshRef::generation() const -> std::uint32_t { return _generation; }
 
-auto create_mesh(std::span<Vertex> vertices, std::span<Index> indices)
+TextureRef::TextureRef(std::uint32_t index, std::uint32_t generation)
+    : _index{index}, _generation{generation} {}
+
+auto TextureRef::index() const -> std::uint32_t { return _index; }
+
+auto TextureRef::generation() const -> std::uint32_t { return _generation; }
+
+auto Resources::create_mesh(std::span<Vertex> vertices,
+                            std::span<Index> indices)
     -> std::optional<MeshRef> {
   const auto vertices_stager_usage = vk::BufferUsageFlagBits::eTransferSrc |
                                      vk::BufferUsageFlagBits::eTransferDst;
@@ -43,7 +75,7 @@ auto create_mesh(std::span<Vertex> vertices, std::span<Index> indices)
       GPUBuffer(indices_buffer_usage, vertices_allocation_size);
 
   vk::Result result =
-      context::immediate_evaluate([&](vk::CommandBuffer commandbuffer) {
+      ContextImpl::immediate_evaluate([&](vk::CommandBuffer commandbuffer) {
         auto vertices_copy =
             vk::BufferCopy{}.setSrcOffset(0).setDstOffset(0).setSize(
                 vertices_allocation_size);
@@ -63,9 +95,9 @@ auto create_mesh(std::span<Vertex> vertices, std::span<Index> indices)
     return std::nullopt;
   }
 
-  auto ref = resources::instance().mesh_sources.add(resources::MeshSource(
-      std::move(vertices_buffer), std::move(indices_buffer),
-      static_cast<std::uint32_t>(indices.size())));
+  auto ref = ResourcesImpl::instance().mesh_sources.add(
+      MeshSource(std::move(vertices_buffer), std::move(indices_buffer),
+                 static_cast<std::uint32_t>(indices.size())));
 
   if (!ref.has_value()) {
     return std::nullopt;
@@ -74,18 +106,12 @@ auto create_mesh(std::span<Vertex> vertices, std::span<Index> indices)
   return MeshRef(ref->index(), ref->generation());
 }
 
-auto destroy_mesh(MeshRef ref) -> void {
-  resources::instance().mesh_sources.remove(Ref(ref.index(), ref.generation()));
+auto Resources::destroy_mesh(MeshRef ref) -> void {
+  ResourcesImpl::instance().mesh_sources.remove(
+      Ref(ref.index(), ref.generation()));
 }
 
-TextureRef::TextureRef(std::uint32_t index, std::uint32_t generation)
-    : _index{index}, _generation{generation} {}
-
-auto TextureRef::index() const -> std::uint32_t { return _index; }
-
-auto TextureRef::generation() const -> std::uint32_t { return _generation; }
-
-auto create_texture(Bitmap &bitmap) -> std::optional<TextureRef> {
+auto Resources::create_texture(Bitmap &bitmap) -> std::optional<TextureRef> {
 
   const auto stager_usage = vk::BufferUsageFlagBits::eTransferSrc |
                             vk::BufferUsageFlagBits::eTransferDst;
@@ -102,7 +128,7 @@ auto create_texture(Bitmap &bitmap) -> std::optional<TextureRef> {
                          vk::ImageAspectFlagBits::eColor);
 
   vk::Result result =
-      context::immediate_evaluate([&](vk::CommandBuffer commandbuffer) {
+      ContextImpl::immediate_evaluate([&](vk::CommandBuffer commandbuffer) {
         // Transition image to color override
         {
           auto range = vk::ImageSubresourceRange{}
@@ -185,8 +211,8 @@ auto create_texture(Bitmap &bitmap) -> std::optional<TextureRef> {
     return std::nullopt;
   }
 
-  auto ref = resources::instance().texture_sources.add(
-      resources::TextureSource(std::move(texture)));
+  auto ref = ResourcesImpl::instance().texture_sources.add(
+      TextureSource(std::move(texture)));
 
   if (!ref.has_value()) {
     return std::nullopt;
@@ -195,36 +221,9 @@ auto create_texture(Bitmap &bitmap) -> std::optional<TextureRef> {
   return TextureRef(ref->index(), ref->generation());
 }
 
-auto destroy_texture(TextureRef ref) -> void {
-  resources::instance().texture_sources.remove(
+auto Resources::destroy_texture(TextureRef ref) -> void {
+  ResourcesImpl::instance().texture_sources.remove(
       Ref(ref.index(), ref.generation()));
 }
 
 } // namespace bubble
-
-namespace bubble::resources {
-
-namespace singleton {
-static std::unique_ptr<Instance> ginstance{nullptr};
-}
-
-auto instance() -> Instance & { return *singleton::ginstance; }
-
-[[nodiscard]]
-auto initialize() -> bool {
-  singleton::ginstance = std::make_unique<Instance>();
-
-  return true;
-}
-
-auto destroy() -> void { singleton::ginstance = nullptr; }
-
-auto get(MeshRef ref) -> MeshSource * {
-  return instance().mesh_sources.get(Ref(ref.index(), ref.generation()));
-}
-
-auto get(TextureRef ref) -> TextureSource * {
-  return instance().texture_sources.get(Ref(ref.index(), ref.generation()));
-}
-
-} // namespace bubble::resources

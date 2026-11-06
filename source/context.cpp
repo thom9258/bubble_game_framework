@@ -4,13 +4,13 @@
 #include <ranges>
 #include <utility>
 
-namespace bubble::context {
+namespace bubble {
 
-namespace singleton {
-static std::unique_ptr<Instance> ginstance{nullptr};
-}
+static std::unique_ptr<ContextImpl> g_instance{nullptr};
 
-auto instance() -> Instance & { return *singleton::ginstance; }
+auto ContextImpl::instance() -> ContextImpl & { return *g_instance; }
+
+auto Context::destroy() -> void { g_instance.reset(); }
 
 auto stringify(LogType type) {
   switch (type) {
@@ -48,15 +48,15 @@ GlobalContext::~GlobalContext() {
   SDL_Quit();
 }
 
-auto initialize_window(InitializeInfo &info) -> bool {
+auto initialize_window(const InitializeConfig &config) -> bool {
   constexpr auto pos_x = int{0};
   constexpr auto pos_y = int{0};
   constexpr auto flags = 0 | SDL_WINDOW_VULKAN | SDL_WINDOW_ALLOW_HIGHDPI;
 
-  instance().window = SDLWindowPtr{SDL_CreateWindow(
-      info.name.data(), pos_x, pos_y, info.width, info.height, flags)};
+  ContextImpl::instance().window = SDLWindowPtr{SDL_CreateWindow(
+      config.name.data(), pos_x, pos_y, config.width, config.height, flags)};
 
-  if (instance().window == nullptr) {
+  if (ContextImpl::instance().window == nullptr) {
     return false;
   }
 
@@ -65,14 +65,15 @@ auto initialize_window(InitializeInfo &info) -> bool {
 
 auto window_instance_extensions() -> std::vector<const char *> {
   auto count = std::uint32_t{0};
-  SDL_Vulkan_GetInstanceExtensions(instance().window.get(), &count, nullptr);
+  SDL_Vulkan_GetInstanceExtensions(ContextImpl::instance().window.get(), &count,
+                                   nullptr);
   auto extensions = std::vector<const char *>(count);
-  SDL_Vulkan_GetInstanceExtensions(instance().window.get(), &count,
+  SDL_Vulkan_GetInstanceExtensions(ContextImpl::instance().window.get(), &count,
                                    extensions.data());
   return extensions;
 }
 
-auto initialize_vulkan_instance(InitializeInfo &info) -> bool {
+auto initialize_vulkan_instance(const InitializeConfig &config) -> bool {
   auto instance_extensions = window_instance_extensions();
   instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
@@ -87,7 +88,7 @@ auto initialize_vulkan_instance(InitializeInfo &info) -> bool {
 
   const auto applicationInfo =
       vk::ApplicationInfo{}
-          .setPApplicationName(info.name.c_str())
+          .setPApplicationName(config.name.c_str())
           .setPEngineName("engine")
           .setApplicationVersion(VK_MAKE_VERSION(1, 1, 0))
           .setEngineVersion(VK_MAKE_VERSION(1, 1, 0))
@@ -99,7 +100,7 @@ auto initialize_vulkan_instance(InitializeInfo &info) -> bool {
           .setEnabledExtensionCount(instance_extensions.size())
           .setPpEnabledExtensionNames(instance_extensions.data());
 
-  if (info.options.enable_graphics_validation) {
+  if (config.options.enable_graphics_validation) {
     instanceCreateInfo.setEnabledLayerCount(validation_layers.size());
     instanceCreateInfo.setPpEnabledLayerNames(validation_layers.data());
     LOG_INFO("Enabled validation layers:");
@@ -108,7 +109,8 @@ auto initialize_vulkan_instance(InitializeInfo &info) -> bool {
     }
   }
 
-  instance().instance = vk::createInstanceUnique(instanceCreateInfo);
+  ContextImpl::instance().vkinstance =
+      vk::createInstanceUnique(instanceCreateInfo);
   return true;
 }
 
@@ -184,10 +186,10 @@ auto rate_physical_device(vk::PhysicalDevice physical_device,
 
 auto initialize_surface() -> bool {
   VkSurfaceKHR tmp;
-  SDL_Vulkan_CreateSurface(instance().window.get(), instance().instance.get(),
-                           &tmp);
-  instance().surface =
-      vk::UniqueSurfaceKHR(vk::SurfaceKHR(tmp), instance().instance.get());
+  SDL_Vulkan_CreateSurface(ContextImpl::instance().window.get(),
+                           ContextImpl::instance().vkinstance.get(), &tmp);
+  ContextImpl::instance().surface = vk::UniqueSurfaceKHR(
+      vk::SurfaceKHR(tmp), ContextImpl::instance().vkinstance.get());
   return true;
 }
 
@@ -220,8 +222,9 @@ auto log_physical_device(vk::PhysicalDevice physical_device) -> void {
 
 auto initialize_physical_device() -> bool {
   std::uint32_t physical_device_count{0};
-  vk::Result result = instance().instance.get().enumeratePhysicalDevices(
-      &physical_device_count, nullptr);
+  vk::Result result =
+      ContextImpl::instance().vkinstance.get().enumeratePhysicalDevices(
+          &physical_device_count, nullptr);
 
   if (result != vk::Result::eSuccess) {
     LOG_ERROR("Could not enumerate physical devices");
@@ -229,7 +232,7 @@ auto initialize_physical_device() -> bool {
   }
 
   std::vector<vk::PhysicalDevice> physical_devices(physical_device_count);
-  result = instance().instance.get().enumeratePhysicalDevices(
+  result = ContextImpl::instance().vkinstance.get().enumeratePhysicalDevices(
       &physical_device_count, physical_devices.data());
 
   if (result != vk::Result::eSuccess) {
@@ -242,7 +245,8 @@ auto initialize_physical_device() -> bool {
   LOG_INFO("Physical Device Count: {}", physical_device_count);
   for (auto [i, physical_device] : physical_devices | std::views::enumerate) {
     log_physical_device(physical_device);
-    scores[i] = rate_physical_device(physical_device, instance().surface.get());
+    scores[i] = rate_physical_device(physical_device,
+                                     ContextImpl::instance().surface.get());
   }
 
   std::uint32_t best_score{0};
@@ -253,7 +257,7 @@ auto initialize_physical_device() -> bool {
 
     if (score.value() > best_score) {
       best_score = score.value();
-      instance().physical_device = device;
+      ContextImpl::instance().m_physical_device = device;
     }
 
     vk::PhysicalDeviceProperties properties = device.getProperties();
@@ -265,21 +269,22 @@ auto initialize_physical_device() -> bool {
     return false;
   }
 
-  const auto properties = physical_device().getProperties();
+  const auto properties = ContextImpl::physical_device().getProperties();
   LOG_INFO("Chosen Physical Device: '{}'", properties.deviceName.data());
   return true;
 }
 
 auto initialize_queuefamily_index() -> bool {
   std::optional<std::uint32_t> family =
-      get_queue_family(instance().physical_device, instance().surface.get());
+      get_queue_family(ContextImpl::instance().physical_device(),
+                       ContextImpl::instance().surface.get());
 
   if (!family.has_value()) {
     LOG_ERROR("Could not get a queue family for physical_device");
     return false;
   }
 
-  instance().queuefamily_index = family.value();
+  ContextImpl::instance().queuefamily_index = family.value();
   return true;
 }
 
@@ -288,7 +293,7 @@ auto initialize_device() -> bool {
   auto deviceQueueCreateInfo =
       vk::DeviceQueueCreateInfo{}
           .setFlags({})
-          .setQueueFamilyIndex(instance().queuefamily_index)
+          .setQueueFamilyIndex(ContextImpl::instance().queuefamily_index)
           .setQueuePriorities(queue_priorities)
           .setQueueCount(1);
 
@@ -308,15 +313,16 @@ auto initialize_device() -> bool {
           .setPpEnabledExtensionNames(device_extensions.data())
           .setEnabledExtensionCount(device_extensions.size());
 
-  instance().device =
-      instance().physical_device.createDeviceUnique(deviceCreateInfo);
+  ContextImpl::instance().m_device =
+      ContextImpl::instance().physical_device().createDeviceUnique(
+          deviceCreateInfo);
   return true;
 }
 
 auto initialize_queue() -> bool {
   constexpr int queue_index = 0;
-  instance().queue = instance().device.get().getQueue(
-      instance().queuefamily_index, queue_index);
+  ContextImpl::instance().queue = ContextImpl::instance().device().getQueue(
+      ContextImpl::instance().queuefamily_index, queue_index);
   return true;
 }
 
@@ -324,25 +330,59 @@ auto initialize_commandpool() -> bool {
   auto commandPoolCreateInfo =
       vk::CommandPoolCreateInfo{}
           .setFlags(vk::CommandPoolCreateFlagBits::eResetCommandBuffer)
-          .setQueueFamilyIndex(instance().queuefamily_index);
+          .setQueueFamilyIndex(ContextImpl::instance().queuefamily_index);
 
-  instance().commandpool = instance().device.get().createCommandPoolUnique(
-      commandPoolCreateInfo, nullptr);
+  ContextImpl::instance().commandpool =
+      ContextImpl::instance().device().createCommandPoolUnique(
+          commandPoolCreateInfo, nullptr);
   return true;
 }
 
-auto initialize(InitializeInfo &info) -> bool {
-  singleton::ginstance = std::make_unique<Instance>();
-  instance().globalcontext = GlobalContext::create();
-  if (!instance().globalcontext.has_value()) {
+auto poll_events() -> void {
+  auto events = std::vector<SDL_Event>{};
+  auto current = SDL_Event{};
+  while (SDL_PollEvent(&current)) {
+    events.push_back(current);
+  }
+
+  ContextImpl::instance().events = events;
+}
+
+auto handle_events() -> void {
+  for (SDL_Event event : ContextImpl::instance().events) {
+    if (event.type == SDL_QUIT) {
+      ContextImpl::instance().requested_close = true;
+    }
+  }
+}
+
+auto Context::begin_frame() -> void {
+  poll_events();
+  handle_events();
+}
+
+[[nodiscard]]
+auto Context::requested_close() -> bool {
+  return ContextImpl::instance().requested_close;
+}
+
+auto Context::initialize(const InitializeConfig &config) -> bool {
+  if (g_instance != nullptr) {
+    destroy();
+  }
+
+  g_instance.reset(new ContextImpl);
+
+  ContextImpl::instance().globalcontext = GlobalContext::create();
+  if (!ContextImpl::instance().globalcontext.has_value()) {
     return false;
   }
 
-  if (!initialize_window(info)) {
+  if (!initialize_window(config)) {
     return false;
   }
 
-  if (!initialize_vulkan_instance(info)) {
+  if (!initialize_vulkan_instance(config)) {
     return false;
   }
 
@@ -373,34 +413,7 @@ auto initialize(InitializeInfo &info) -> bool {
   return true;
 }
 
-auto destroy() -> void { singleton::ginstance = nullptr; }
-
-auto poll_events() -> void {
-  auto events = std::vector<SDL_Event>{};
-  auto current = SDL_Event{};
-  while (SDL_PollEvent(&current)) {
-    events.push_back(current);
-  }
-
-  instance().events = events;
-}
-
-auto handle_events() -> void {
-  for (SDL_Event event : instance().events) {
-    if (event.type == SDL_QUIT) {
-      instance().requested_close = true;
-    }
-  }
-}
-
-auto begin_frame() -> void {
-  poll_events();
-  handle_events();
-}
-
-auto requested_close() -> bool { return instance().requested_close; }
-
-auto find_memory_type(
+auto ContextImpl::find_memory_type(
     vk::PhysicalDeviceMemoryProperties const &memoryProperties,
     uint32_t typeBits, vk::MemoryPropertyFlags requirementsMask)
     -> std::uint32_t {
@@ -420,18 +433,18 @@ auto find_memory_type(
   return typeIndex;
 }
 
-auto device() -> vk::Device { return instance().device.get(); }
+auto ContextImpl::device() -> vk::Device { return instance().m_device.get(); }
 
-auto physical_device() -> vk::PhysicalDevice {
-  return instance().physical_device;
+auto ContextImpl::physical_device() -> vk::PhysicalDevice {
+  return instance().m_physical_device;
 }
 
-} // namespace bubble::context
+} // namespace bubble
 
 namespace bubble {
 
 auto get_sdl_events() -> std::vector<SDL_Event> {
-  return context::instance().events;
+  return ContextImpl::instance().events;
 }
 
 } // namespace bubble

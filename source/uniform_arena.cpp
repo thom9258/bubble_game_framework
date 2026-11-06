@@ -9,7 +9,7 @@ inline constexpr const auto uniform_arena_usage_flags =
 
 UniformArena::UniformArena(std::size_t size)
     : _buffer{uniform_arena_usage_flags, size}, _used{0},
-      _alignment{context::physical_device()
+      _alignment{ContextImpl::physical_device()
                      .getProperties()
                      .limits.minUniformBufferOffsetAlignment} {}
 

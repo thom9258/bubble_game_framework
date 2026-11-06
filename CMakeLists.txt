@@ -15,9 +15,9 @@ find_package(SDL2 REQUIRED)
 find_package(glm REQUIRED)
 
 set(SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/bubble.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/context.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/renderer.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/camera.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/timer.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/resources.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/direct_buffer.cpp

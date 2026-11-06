@@ -1,173 +1,114 @@
 #pragma once
 
-// TODO: we need to make a custom math wrapper at some point, but this is a
-// cheat
-#include "internal/glm.hpp"
+#include <bubble/system_concept.hpp>
 
-#include "bitmap.hpp"
-
-#include <cstdint>
-#include <optional>
-#include <span>
-#include <string>
+#include <functional>
+#include <tuple>
 
 namespace bubble {
 
-enum class LogType { info, warn, error };
-using LogCallback = void (*)(LogType, std::string_view);
+template <System... Systems> class Bubble {
+private:
+  static constexpr auto system_count_v = sizeof...(Systems);
+  static_assert(system_count_v > 0);
 
-struct InitializeInfo {
-  std::int32_t width{480};
-  std::int32_t height{320};
-  std::string name{"bubble"};
-
-  struct {
-    std::optional<LogCallback> log_callback;
-    bool enable_graphics_validation{true};
-    bool enable_vsync{true};
-  } options;
-};
-
-[[nodiscard]]
-auto initialize(InitializeInfo &info) -> bool;
-
-auto destroy() -> void;
-
-auto begin_drawing() -> void;
-
-auto end_drawing() -> void;
-
-[[nodiscard]]
-auto requested_close() -> bool;
-
-struct Vertex {
-  float position[3];
-  float normal[3];
-  float texture_coordinate[2];
-};
-
-using Index = std::uint32_t;
-
-class MeshRef {
 public:
-  MeshRef(std::uint32_t index, std::uint32_t generation);
-  auto index() const -> std::uint32_t;
-  auto generation() const -> std::uint32_t;
+  constexpr auto system_count() const -> std::size_t { return system_count_v; }
+
+  constexpr auto initialize(const InitializeConfig &config) -> bool {
+    for_each_system([&](auto type_identity) {
+      using System = typename decltype(type_identity)::type;
+      System::initialize(config);
+    });
+
+    return true;
+  }
+
+  constexpr auto destroy() -> void {
+    for_each_system_reverse([](auto type_identity) {
+      using System = typename decltype(type_identity)::type;
+      System::destroy();
+    });
+  }
+
+  constexpr auto begin_frame() -> void {
+    for_each_system([](auto type_identity) {
+      using System = typename decltype(type_identity)::type;
+      if constexpr (SystemHasBeginFrame<System>) {
+        System::begin_frame();
+      }
+    });
+  }
+
+  constexpr auto end_frame() -> void {
+    for_each_system([](auto type_identity) {
+      using System = typename decltype(type_identity)::type;
+      if constexpr (SystemHasEndFrame<System>) {
+        System::end_frame();
+      }
+    });
+  }
+
+#if 0
+  constexpr auto begin_drawing() -> void {
+    for_each_system([](auto type_identity) {
+      using System = typename decltype(type_identity)::type;
+      if constexpr (SystemHasBeginDrawing<System>) {
+        System::begin_drawing();
+      }
+    });
+  }
+
+  constexpr auto end_drawing() -> void {
+    for_each_system([](auto type_identity) {
+      using System = typename decltype(type_identity)::type;
+      if constexpr (SystemHasEndDrawing<System>) {
+        System::end_drawing();
+      }
+    });
+  }
+#endif
+
+  constexpr auto update(double deltatime) -> void {
+    constexpr const auto max_deltatime = double{0.25};
+    const auto safe_deltatime = std::min(max_deltatime, deltatime);
+    for_each_system([&](auto type_identity) {
+      using System = typename decltype(type_identity)::type;
+      if constexpr (SystemHasBeginFrame<System>) {
+        System::update(safe_deltatime);
+      }
+    });
+
+    m_accumulated_time += safe_deltatime;
+    while (m_accumulated_time >= m_fixed_update_deltatime) {
+      m_accumulated_time -= m_fixed_update_deltatime;
+      for_each_system([&](auto type_identity) {
+        using System = typename decltype(type_identity)::type;
+        if constexpr (SystemHasFixedUpdate<System>) {
+          System::fixed_update(m_fixed_update_deltatime);
+        }
+      });
+    }
+  }
 
 private:
-  std::uint32_t _index;
-  std::uint32_t _generation;
+  template <typename Fn> constexpr auto for_each_system(Fn &&fn) -> void {
+    ((std::invoke(std::forward<Fn>(fn), std::type_identity<Systems>{})), ...);
+  }
+
+  template <typename Fn>
+  constexpr auto for_each_system_reverse(Fn &&fn) -> void {
+    [&]<std::size_t... indices>(std::index_sequence<indices...>) {
+      ((std::invoke(
+           std::forward<Fn>(fn),
+           std::type_identity<std::tuple_element_t<system_count_v - 1 - indices,
+                                                   std::tuple<Systems...>>>{})),
+       ...);
+    }(std::make_index_sequence<system_count_v>{});
+  }
+
+  double m_accumulated_time{0.0};
+  double m_fixed_update_deltatime{1.0 / 30.0};
 };
-
-auto create_mesh(std::span<Vertex> vertices, std::span<Index> indices)
-    -> std::optional<MeshRef>;
-
-auto destroy_mesh(MeshRef ref) -> void;
-
-class TextureRef {
-public:
-  TextureRef(std::uint32_t index, std::uint32_t generation);
-  auto index() const -> std::uint32_t;
-  auto generation() const -> std::uint32_t;
-
-private:
-  std::uint32_t _index;
-  std::uint32_t _generation;
-};
-
-auto create_texture(Bitmap &bitmap) -> std::optional<TextureRef>;
-
-auto destroy_texture(TextureRef ref) -> void;
-
-auto set_clearcolor(Color color) -> void;
-
-class Camera {
-public:
-  Camera(glm::vec3 position, glm::vec3 forward);
-
-  auto translate_global(glm::vec3 delta) -> void;
-
-  auto translate_local(glm::vec3 delta) -> void;
-
-  auto set_position(glm::vec3 position) -> void;
-
-  auto rotate(glm::vec2 delta) -> void;
-
-  auto look_at(glm::vec3 target) -> void;
-
-  [[nodiscard]]
-  auto position() const -> glm::vec3;
-
-  [[nodiscard]]
-  auto forward() const -> glm::vec3;
-
-  [[nodiscard]]
-  auto up() const -> glm::vec3;
-
-  [[nodiscard]]
-  auto right() const -> glm::vec3;
-
-  [[nodiscard]]
-  auto fov_y() const -> float;
-
-  [[nodiscard]]
-  auto near() const -> float;
-
-  [[nodiscard]]
-  auto far() const -> float;
-
-private:
-  glm::vec3 _position{glm::vec3(0.0f, 0.0f, 0.0f)};
-  glm::vec3 _forward{glm::vec3(0.0f, 0.0f, 1.0f)};
-  glm::vec3 _up{glm::vec3(0.0f, 1.0f, 0.0f)};
-  float _fov_y{glm::radians(45.0f)};
-  float _near{0.1f};
-  float _far{100.0f};
-};
-
-struct HemisphereLight {
-  Color color;
-  Color sky;
-  float intensity;
-};
-
-struct DirectionalLight {
-  glm::vec3 direction;
-  Color color;
-  float intensity;
-};
-
-struct PointLight {
-  glm::vec3 position;
-  Color color;
-  float intensity;
-};
-
-struct SpotLight {
-  glm::vec3 position;
-  glm::vec3 direction;
-  Color color;
-  float intensity;
-};
-
-auto add_light(HemisphereLight light);
-
-auto add_light(DirectionalLight light);
-
-auto add_light(PointLight light);
-
-auto add_light(SpotLight light);
-
-auto set_camera(Camera camera) -> void;
-
-auto begin_frame() -> void;
-
-auto deltatime() -> std::optional<float>;
-
-auto end_frame() -> void;
-
-auto draw_flatcolor(glm::mat4 location, MeshRef mesh, Color color) -> void;
-
-auto draw_textured(glm::mat4 location, MeshRef mesh, TextureRef texture) -> void;
 
 } // namespace bubble
