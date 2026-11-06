@@ -2,10 +2,14 @@
 
 #include <bubble/bubble.hpp>
 
+#include "bubble/renderer.hpp"
+#include "bubble/resources.hpp"
 #include "context.hpp"
 #include "direct_buffer.hpp"
+#include "renderer.hpp"
 
 #include <memory>
+#include <span>
 
 namespace bubble {
 
@@ -13,13 +17,89 @@ static std::unique_ptr<ResourcesImpl> m_instance{nullptr};
 
 auto ResourcesImpl::instance() -> ResourcesImpl & { return *m_instance; }
 
+auto cube_vertices() -> std::span<const Vertex> {
+  static constexpr auto vertices = std::array{
+      Vertex{{-0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}},
+      Vertex{{0.5f, -0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}},
+      Vertex{{0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}},
+      Vertex{{-0.5f, 0.5f, 0.5f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}},
+
+      Vertex{{0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}},
+      Vertex{{-0.5f, -0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}},
+      Vertex{{-0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}},
+      Vertex{{0.5f, 0.5f, -0.5f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}},
+
+      Vertex{{-0.5f, -0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+      Vertex{{-0.5f, -0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+      Vertex{{-0.5f, 0.5f, 0.5f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+      Vertex{{-0.5f, 0.5f, -0.5f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+
+      Vertex{{0.5f, -0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}},
+      Vertex{{0.5f, -0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}},
+      Vertex{{0.5f, 0.5f, -0.5f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}},
+      Vertex{{0.5f, 0.5f, 0.5f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}},
+
+      Vertex{{-0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}},
+      Vertex{{0.5f, 0.5f, 0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}},
+      Vertex{{0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}},
+      Vertex{{-0.5f, 0.5f, -0.5f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}},
+
+      Vertex{{-0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}},
+      Vertex{{0.5f, -0.5f, -0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}},
+      Vertex{{0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}},
+      Vertex{{-0.5f, -0.5f, 0.5f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}}};
+
+  return vertices;
+}
+
+auto cube_indices() -> std::span<const Index> {
+  static constexpr auto indices =
+      std::array{0u,  1u,  2u,  2u,  3u,  0u,  4u,  5u,  6u,  6u,  7u,  4u,
+                 8u,  9u,  10u, 10u, 11u, 8u,  12u, 13u, 14u, 14u, 15u, 12u,
+                 16u, 17u, 18u, 18u, 19u, 16u, 20u, 21u, 22u, 22u, 23u, 20u};
+  return indices;
+}
+
+auto checkerboard_bitmap() -> Bitmap {
+
+  auto bitmap = bubble::Bitmap(64, 64, bubble::Color(255, 255, 0, 255));
+  for (std::size_t i = 0; i < 32; i++) {
+    for (std::size_t j = 0; j < 32; j++) {
+      *bitmap.at(i, j) = bubble::color::red;
+    }
+  }
+
+  for (std::size_t i = 32; i < 64; i++) {
+    for (std::size_t j = 32; j < 64; j++) {
+      *bitmap.at(i, j) = bubble::color::red;
+    }
+  }
+
+  return bitmap;
+}
+
+auto initialize_defaults() -> bool {
+
+  ResourcesImpl::instance().default_mesh =
+      Resources::create_mesh(cube_vertices(), cube_indices());
+
+  auto bitmap = checkerboard_bitmap();
+  ResourcesImpl::instance().default_texture = Resources::create_texture(bitmap);
+  return true;
+}
+
 [[nodiscard]]
-auto Resources::initialize(const InitializeConfig&) -> bool {
+auto Resources::initialize(const InitializeConfig &) -> bool {
   if (m_instance != nullptr) {
     destroy();
   }
 
   m_instance.reset(new ResourcesImpl);
+
+  if (!initialize_defaults()) {
+    return false;
+  }
+
   return true;
 }
 
@@ -47,8 +127,8 @@ auto TextureRef::index() const -> std::uint32_t { return _index; }
 
 auto TextureRef::generation() const -> std::uint32_t { return _generation; }
 
-auto Resources::create_mesh(std::span<Vertex> vertices,
-                            std::span<Index> indices)
+auto Resources::create_mesh(std::span<const Vertex> vertices,
+                            std::span<const Index> indices)
     -> std::optional<MeshRef> {
   const auto vertices_stager_usage = vk::BufferUsageFlagBits::eTransferSrc |
                                      vk::BufferUsageFlagBits::eTransferDst;
@@ -224,6 +304,14 @@ auto Resources::create_texture(Bitmap &bitmap) -> std::optional<TextureRef> {
 auto Resources::destroy_texture(TextureRef ref) -> void {
   ResourcesImpl::instance().texture_sources.remove(
       Ref(ref.index(), ref.generation()));
+}
+
+auto Resources::default_mesh() -> MeshRef {
+  return ResourcesImpl::instance().default_mesh.value();
+}
+
+auto Resources::default_texture() -> TextureRef {
+  return ResourcesImpl::instance().default_texture.value();
 }
 
 } // namespace bubble

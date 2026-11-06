@@ -31,6 +31,8 @@ public:
 
   GenerationalArray<MeshSource, 100> mesh_sources;
   GenerationalArray<TextureSource, 100> texture_sources;
+  std::optional<MeshRef> default_mesh;
+  std::optional<TextureRef> default_texture;
 
 private:
   ResourcesImpl() = default;

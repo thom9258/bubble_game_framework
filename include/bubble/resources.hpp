@@ -1,8 +1,8 @@
 #pragma once
 
 #include "bubble/initialize_config.hpp"
-#include <bubble/system_concept.hpp>
 #include <bubble/bitmap.hpp>
+#include <bubble/system_concept.hpp>
 
 #include <cstdint>
 #include <optional>
@@ -43,12 +43,12 @@ private:
 class Resources {
 public:
   [[nodiscard]]
-  static auto initialize(const InitializeConfig& config) -> bool;
+  static auto initialize(const InitializeConfig &config) -> bool;
 
   static auto destroy() -> void;
 
   [[nodiscard]]
-  static auto create_mesh(std::span<Vertex> vertices, std::span<Index> indices)
+  static auto create_mesh(std::span<const Vertex> vertices, std::span<const Index> indices)
       -> std::optional<MeshRef>;
 
   static auto destroy_mesh(MeshRef ref) -> void;
@@ -57,6 +57,12 @@ public:
   static auto create_texture(Bitmap &bitmap) -> std::optional<TextureRef>;
 
   static auto destroy_texture(TextureRef ref) -> void;
+
+  [[nodiscard]]
+  static auto default_mesh() -> MeshRef;
+
+  [[nodiscard]]
+  static auto default_texture() -> TextureRef;
 
 private:
   Resources() = delete;
