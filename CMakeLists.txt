@@ -31,6 +31,8 @@ set(SOURCES
 
 add_library(${PROJECT_NAME} ${SOURCES})
 
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
+
 set(COMPILE_AND_EMBED_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/shaders/compile_and_embed.py")
 set(GENERATED_SHADERS_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_shaders")
 file(MAKE_DIRECTORY ${GENERATED_SHADERS_DIR})
