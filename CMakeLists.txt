@@ -2,7 +2,12 @@ cmake_minimum_required(VERSION 3.15)
 
 project(bubble VERSION 0.1.0)
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -ggdb -pg")
+if(UNIX AND NOT APPLE)
+    set(CMAKE_CXX_FLAGS "-Wall -Wextra -ggdb -pg")
+elseif(MSVC)
+    set(CMAKE_CXX_FLAGS "/W4")
+endif()
+
 set(CMAKE_CXX_STANDARD 23)
 set(CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
