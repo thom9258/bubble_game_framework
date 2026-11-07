@@ -4,6 +4,13 @@
 #include <ranges>
 #include <utility>
 
+#if defined(_MSC_VER)
+#include <direct.h>
+#define getcwd _getcwd
+#elif defined(__GNUC__)
+#include <unistd.h>
+#endif
+
 namespace bubble {
 
 static std::unique_ptr<ContextImpl> g_instance{nullptr};
@@ -23,6 +30,15 @@ auto stringify(LogType type) {
   }
 
   std::unreachable();
+}
+
+auto Context::program_path() -> std::optional<std::filesystem::path> {
+  std::array<char, FILENAME_MAX> buffer;
+  if (getcwd(buffer.data(), buffer.size()) != nullptr) {
+    return std::filesystem::path(buffer.data());
+  }
+
+  return std::nullopt;
 }
 
 auto default_log_callback(LogType type, std::string_view msg) -> void {
