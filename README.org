@@ -7,10 +7,16 @@ Things needed to make a simple game for a gamejam (sort of sorted by importance)
 - [X] Mouse Locking/Hiding
 - [X] Camera control utility (rotation, lookat etc.)
 - [X] Texture Pipeline Rendering
+- [ ] Support Library distribution, FetchContent or conan package
+- [ ] 2D sprite rendering for UI
+- [ ] Sound System
+- [ ] Configurable PS1 effect (wobble + posterization)
 - [ ] Lights without shadowcasting
-- [ ] Sound Manager
-- [ ] Windows Publish
 - [ ] Animated Models
 - [ ] Drawing with Color Blending (billboard)
-- [ ] 2D sprite rendering for UI
-- [ ] Window Resize
+- [ ] Window Resize and Reinitialization of the render pipeline
+  
+** Known minor issues
+- [ ] Presentation must be a task in the render task graph
+- [ ] Cleanup+simplification of singleton usage across all source files
+- [ ] Simple documentation of the public API

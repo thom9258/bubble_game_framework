@@ -54,7 +54,7 @@ public:
     const auto safe_deltatime = std::min(max_deltatime, deltatime);
     for_each_system([&](auto type_identity) {
       using System = typename decltype(type_identity)::type;
-      if constexpr (SystemHasBeginFrame<System>) {
+      if constexpr (SystemHasUpdate<System>) {
         System::update(safe_deltatime);
       }
     });
