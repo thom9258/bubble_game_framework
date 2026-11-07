@@ -4,7 +4,9 @@
 #include "internal/glm.hpp"
 #include "internal/sdl.hpp"
 
-namespace bubble::input {
+namespace bubble {
+
+namespace detail {
 
 class ButtonState {
 public:
@@ -29,6 +31,8 @@ private:
   bool _held{false};
 };
 
+} // namespace detail
+
 class Button {
 public:
   explicit Button(int keycode);
@@ -46,12 +50,12 @@ public:
 
 private:
   int _keycode{0};
-  ButtonState _state;
+  detail::ButtonState _state;
 };
 
-class Axis {
+class ButtonAxis {
 public:
-  explicit Axis(int negative, int positive);
+  explicit ButtonAxis(int negative, int positive);
 
   auto update() -> void;
 
@@ -102,13 +106,12 @@ public:
 
   auto center_mouse_position() -> void;
 
-
 private:
   bool _locked{false};
   glm::ivec2 _move_delta{};
   glm::ivec2 _position{};
-  ButtonState _left;
-  ButtonState _right;
+  detail::ButtonState _left;
+  detail::ButtonState _right;
 };
 
-} // namespace bubble::input
+} // namespace bubble

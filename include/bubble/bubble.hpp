@@ -2,8 +2,10 @@
 
 #include <bubble/system_concept.hpp>
 
+#include <concepts>
 #include <functional>
 #include <tuple>
+#include <type_traits>
 
 namespace bubble {
 
@@ -16,12 +18,10 @@ public:
   constexpr auto system_count() const -> std::size_t { return system_count_v; }
 
   constexpr auto initialize(const InitializeConfig &config) -> bool {
-    for_each_system([&](auto type_identity) {
+    return for_each_system_checked([&](auto type_identity) -> bool {
       using System = typename decltype(type_identity)::type;
-      System::initialize(config);
+      return System::initialize(config);
     });
-
-    return true;
   }
 
   constexpr auto destroy() -> void {
@@ -49,26 +49,6 @@ public:
     });
   }
 
-#if 0
-  constexpr auto begin_drawing() -> void {
-    for_each_system([](auto type_identity) {
-      using System = typename decltype(type_identity)::type;
-      if constexpr (SystemHasBeginDrawing<System>) {
-        System::begin_drawing();
-      }
-    });
-  }
-
-  constexpr auto end_drawing() -> void {
-    for_each_system([](auto type_identity) {
-      using System = typename decltype(type_identity)::type;
-      if constexpr (SystemHasEndDrawing<System>) {
-        System::end_drawing();
-      }
-    });
-  }
-#endif
-
   constexpr auto update(double deltatime) -> void {
     constexpr const auto max_deltatime = double{0.25};
     const auto safe_deltatime = std::min(max_deltatime, deltatime);
@@ -92,6 +72,21 @@ public:
   }
 
 private:
+  template <typename Fn>
+  [[nodiscard]]
+  constexpr auto for_each_system_checked(Fn &&fn) -> bool
+    requires requires {
+      {
+        (std::invoke(std::forward<Fn>(fn), std::type_identity<Systems>{}) &&
+         ...)
+      } -> std::same_as<bool>;
+    }
+  {
+    return (
+        (std::invoke(std::forward<Fn>(fn), std::type_identity<Systems>{})) &&
+        ...);
+  }
+
   template <typename Fn> constexpr auto for_each_system(Fn &&fn) -> void {
     ((std::invoke(std::forward<Fn>(fn), std::type_identity<Systems>{})), ...);
   }

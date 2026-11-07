@@ -23,8 +23,9 @@ int main(int argc, char **argv) {
   auto config = bubble::InitializeConfig{};
   config.height = 600;
   config.width = config.height * (4.0f / 3.0f);
-  // const auto ok = bubble.initialize(config);
-  bubble.initialize(config);
+  if (!bubble.initialize(config)) {
+    return 1;
+  }
 
   auto duration = init_timer.stop();
   if (duration.has_value()) {
@@ -40,11 +41,11 @@ int main(int argc, char **argv) {
   const auto cube_location = glm::scale(glm::mat4(1.0f), glm::vec3(0.5f));
   const auto cube_color = bubble::color::ugly_pink;
 
-  auto button_focus = bubble::input::Button(SDLK_f);
-  auto axis_x = bubble::input::Axis(SDLK_d, SDLK_a);
-  auto axis_z = bubble::input::Axis(SDLK_s, SDLK_w);
+  auto button_focus = bubble::Button(SDLK_f);
+  auto axis_x = bubble::ButtonAxis(SDLK_d, SDLK_a);
+  auto axis_z = bubble::ButtonAxis(SDLK_s, SDLK_w);
 
-  auto mouse = bubble::input::Mouse();
+  auto mouse = bubble::Mouse();
 
   auto should_run = true;
   while (should_run) {

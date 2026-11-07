@@ -2,28 +2,28 @@
 
 #include "context.hpp"
 
-namespace bubble::input {
+namespace bubble {
 
-auto ButtonState::next_frame() -> void {
+auto detail::ButtonState::next_frame() -> void {
   _pressed = false;
   _released = false;
 }
 
-auto ButtonState::press() -> void {
+auto detail::ButtonState::press() -> void {
   _pressed = true;
   _held = true;
 }
 
-auto ButtonState::release() -> void {
+auto detail::ButtonState::release() -> void {
   _released = true;
   _held = false;
 }
 
-auto ButtonState::pressed() const -> bool { return _pressed; }
+auto detail::ButtonState::pressed() const -> bool { return _pressed; }
 
-auto ButtonState::released() const -> bool { return _released; }
+auto detail::ButtonState::released() const -> bool { return _released; }
 
-auto ButtonState::held() const -> bool { return _held; }
+auto detail::ButtonState::held() const -> bool { return _held; }
 
 Button::Button(int keycode) : _keycode{keycode} {}
 
@@ -48,10 +48,10 @@ auto Button::released() const -> bool { return _state.released(); }
 
 auto Button::held() const -> bool { return _state.held(); }
 
-Axis::Axis(int negative_keycode, int positive_keycode)
+ButtonAxis::ButtonAxis(int negative_keycode, int positive_keycode)
     : _negative(negative_keycode), _positive(positive_keycode) {}
 
-auto Axis::update() -> void {
+auto ButtonAxis::update() -> void {
   for (const auto &event : get_sdl_events()) {
     if (event.type == SDL_KEYDOWN && event.key.keysym.sym == _negative) {
       _negative_held = true;
@@ -67,7 +67,7 @@ auto Axis::update() -> void {
   }
 }
 
-auto Axis::value() const -> int {
+auto ButtonAxis::value() const -> int {
   return static_cast<int>(_positive_held) - static_cast<int>(_negative_held);
 }
 
