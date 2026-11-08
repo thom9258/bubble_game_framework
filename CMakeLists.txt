@@ -3,9 +3,9 @@ cmake_minimum_required(VERSION 3.15)
 project(bubble VERSION 0.1.0)
 
 if(UNIX AND NOT APPLE)
-    set(CMAKE_CXX_FLAGS "-Wall -Wextra -ggdb -pg")
+    set(CMAKE_CXX_FLAGS "-Wall -Wextra -ggdb -pg -Wconversion -Wsign-conversion")
 elseif(MSVC)
-    set(CMAKE_CXX_FLAGS "/W4")
+    set(CMAKE_CXX_FLAGS "")
 endif()
 
 set(CMAKE_CXX_STANDARD 23)

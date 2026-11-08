@@ -34,7 +34,7 @@ auto stringify(LogType type) {
 
 auto Context::program_path() -> std::optional<std::filesystem::path> {
   std::array<char, FILENAME_MAX> buffer;
-  if (getcwd(buffer.data(), buffer.size()) != nullptr) {
+  if (getcwd(buffer.data(), static_cast<int>(buffer.size())) != nullptr) {
     return std::filesystem::path(buffer.data());
   }
 
