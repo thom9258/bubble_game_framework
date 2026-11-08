@@ -75,10 +75,10 @@ target_include_directories(${PROJECT_NAME}
 
 target_link_libraries(${PROJECT_NAME} 
     PRIVATE
-    Vulkan::Vulkan
     ${SDL2_LIBRARIES}
 
     PUBLIC
+    Vulkan::Vulkan
     glm::glm
 )
 
