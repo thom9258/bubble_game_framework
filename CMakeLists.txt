@@ -70,14 +70,11 @@ target_include_directories(${PROJECT_NAME}
 
     PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}/generated
-    ${SDL2_INCLUDE_DIRS}
 )
 
 target_link_libraries(${PROJECT_NAME} 
-    PRIVATE
-    ${SDL2_LIBRARIES}
-
     PUBLIC
+    SDL2::SDL2
     Vulkan::Vulkan
     glm::glm
 )
