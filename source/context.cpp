@@ -46,7 +46,8 @@ auto default_log_callback(LogType type, std::string_view msg) -> void {
 }
 
 auto GlobalContext::create() -> std::optional<GlobalContext> {
-  if (SDL_Init(SDL_INIT_EVERYTHING) == 0) {
+  //if (SDL_Init(SDL_INIT_EVERYTHING) == 0) {
+  if (SDL_Init(SDL_INIT_VIDEO) == 0) {
     LOG_ERROR("Could not init SDL");
     return std::nullopt;
   }
