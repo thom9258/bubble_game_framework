@@ -48,12 +48,12 @@ auto default_log_callback(LogType type, std::string_view msg) -> void {
 
 auto GlobalContext::create() -> std::optional<GlobalContext> {
   //if (SDL_Init(SDL_INIT_EVERYTHING) == 0) {
-  if (SDL_Init(SDL_INIT_VIDEO) == 0) {
+  if (!SDL_Init(SDL_INIT_VIDEO)) {
     LOG_ERROR("Could not init SDL, error {}", SDL_GetError());
     return std::nullopt;
   }
 
-  if (SDL_Vulkan_LoadLibrary(nullptr) == 0) {
+  if (!SDL_Vulkan_LoadLibrary(nullptr)) {
     LOG_ERROR("Could not load SDL Vulkan, error {}", SDL_GetError());
     return std::nullopt;
   }
