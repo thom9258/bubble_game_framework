@@ -145,7 +145,7 @@ auto get_queue_family(vk::PhysicalDevice device, vk::SurfaceKHR surface)
     bool const has_present = device.getSurfaceSupportKHR(i, surface);
 
     if (has_graphics && has_transfer && has_compute && has_present) {
-      return i;
+      return static_cast<std::uint32_t>(i);
     }
   }
 
