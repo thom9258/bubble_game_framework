@@ -5,7 +5,7 @@ project(bubble VERSION 0.1.0)
 if(UNIX AND NOT APPLE)
     set(CMAKE_CXX_FLAGS "-Wall -Wextra -ggdb -pg -Wconversion -Wsign-conversion")
 elseif(MSVC)
-    set(CMAKE_CXX_FLAGS "")
+    set(CMAKE_CXX_FLAGS "/EHsc")
 endif()
 
 set(CMAKE_CXX_STANDARD 23)
