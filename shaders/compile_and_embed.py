@@ -5,13 +5,14 @@ import subprocess
 import struct
 
 if len(sys.argv) < 5:
-    print("Usage: compile_and_embed.py <glslc_path> <input_glsl> <output_header> <variable_name>")
+    print("Usage: compile_and_embed.py <glslc_path> <input_glsl> <output_header> <variable_name> [include_dir...]")
     sys.exit(1)
 
 glslc_path = sys.argv[1]
 input_glsl = sys.argv[2]
 output_header = sys.argv[3]
 var_name = sys.argv[4]
+include_dirs = sys.argv[5:]
 
 try:
     with open(input_glsl, "r", encoding="utf-8") as f:
@@ -24,7 +25,7 @@ temp_spv = output_header + ".tmp.spv"
 
 try:
     result = subprocess.run(
-        [glslc_path, input_glsl, "-o", temp_spv],
+        [glslc_path, *[f"-I{d}" for d in include_dirs], input_glsl, "-o", temp_spv],
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
