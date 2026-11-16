@@ -1,9 +1,9 @@
 #include "renderer.hpp"
-#include "bubble/context.hpp"
 #include "context.hpp"
 #include "flat_sorted_set.hpp"
 #include "resources.hpp"
 #include "uniform_arena.hpp"
+#include <bubble/context.hpp>
 
 #include "embedded_shaders/flatcolor_frag.hpp"
 #include "embedded_shaders/flatcolor_vert.hpp"
@@ -882,7 +882,123 @@ auto initialize_frames() -> bool {
   return true;
 }
 
-auto Renderer::destroy() -> void { g_instance.reset(); }
+static void imgui_check_vk_result(VkResult err) {
+  if (err == VK_SUCCESS) {
+    return;
+  }
+
+  LOG_ERROR("[ImGui vulkan] Error: VkResult = {}",
+            vk::to_string(vk::Result(err)));
+}
+
+auto initialize_imgui() -> bool {
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  ImGui::GetIO().ConfigFlags |=
+      ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+  ImGui::GetIO().ConfigFlags |=
+      ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
+  ImGui::StyleColorsDark();
+
+  // TODO: this is a bug if we play on something other than display 0, somehow
+  // get display index and pass here.
+  float main_scale = ImGui_ImplSDL2_GetContentScaleForDisplay(0) *
+                     RendererImpl::instance().pipe.imgui.ui_scale;
+  ImGuiStyle &style = ImGui::GetStyle();
+  style.ScaleAllSizes(main_scale);
+  style.FontScaleDpi = main_scale;
+
+  auto const pool_sizes = std::vector<vk::DescriptorPoolSize>{
+      vk::DescriptorPoolSize{}
+          .setType(vk::DescriptorType::eSampler)
+          .setDescriptorCount(1000),
+      vk::DescriptorPoolSize{}
+          .setType(vk::DescriptorType::eCombinedImageSampler)
+          .setDescriptorCount(1000),
+      vk::DescriptorPoolSize{}
+          .setType(vk::DescriptorType::eSampledImage)
+          .setDescriptorCount(1000),
+      vk::DescriptorPoolSize{}
+          .setType(vk::DescriptorType::eStorageImage)
+          .setDescriptorCount(1000),
+      vk::DescriptorPoolSize{}
+          .setType(vk::DescriptorType::eUniformTexelBuffer)
+          .setDescriptorCount(1000),
+      vk::DescriptorPoolSize{}
+          .setType(vk::DescriptorType::eStorageTexelBuffer)
+          .setDescriptorCount(1000),
+      vk::DescriptorPoolSize{}
+          .setType(vk::DescriptorType::eUniformBuffer)
+          .setDescriptorCount(1000),
+      vk::DescriptorPoolSize{}
+          .setType(vk::DescriptorType::eStorageBuffer)
+          .setDescriptorCount(1000),
+      vk::DescriptorPoolSize{}
+          .setType(vk::DescriptorType::eUniformBufferDynamic)
+          .setDescriptorCount(1000),
+      vk::DescriptorPoolSize{}
+          .setType(vk::DescriptorType::eStorageBufferDynamic)
+          .setDescriptorCount(1000),
+      vk::DescriptorPoolSize{}
+          .setType(vk::DescriptorType::eInputAttachment)
+          .setDescriptorCount(1000),
+  };
+
+  auto const pool_info =
+      vk::DescriptorPoolCreateInfo{}
+          .setPoolSizes(pool_sizes)
+          .setMaxSets(10000)
+          .setFlags(vk::DescriptorPoolCreateFlagBits::eFreeDescriptorSet);
+
+  RendererImpl::instance().pipe.imgui.pool =
+      ContextImpl::device().createDescriptorPoolUnique(pool_info);
+
+  ImGui_ImplSDL2_InitForVulkan(ContextImpl::instance().window.get());
+  ImGui_ImplVulkan_InitInfo init_info = {};
+  init_info.Instance = ContextImpl::instance().vkinstance.get();
+  init_info.PhysicalDevice = ContextImpl::physical_device();
+  init_info.Device = ContextImpl::device();
+  init_info.QueueFamily = ContextImpl::instance().queuefamily_index;
+  init_info.Queue = ContextImpl::instance().queue;
+  init_info.DescriptorPool = RendererImpl::instance().pipe.imgui.pool.get();
+  init_info.MinImageCount = static_cast<std::uint32_t>(
+      RendererImpl::instance().swapchain_images.size());
+  init_info.ImageCount = static_cast<std::uint32_t>(
+      RendererImpl::instance().swapchain_images.size());
+  init_info.Allocator = nullptr;
+  init_info.PipelineInfoMain.RenderPass =
+      RendererImpl::instance().mainpass.renderpass.get();
+  init_info.PipelineInfoMain.Subpass = 0;
+  init_info.PipelineInfoMain.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
+  init_info.CheckVkResultFn = imgui_check_vk_result;
+  ImGui_ImplVulkan_Init(&init_info);
+  return true;
+}
+
+auto destroy_imgui() -> void {
+  ImGui_ImplVulkan_Shutdown();
+  ImGui_ImplSDL2_Shutdown();
+  ImGui::DestroyContext();
+}
+
+auto process_events_imgui() -> void {
+  const auto events = ContextImpl::instance().events;
+  for (auto event : events) {
+    ImGui_ImplSDL2_ProcessEvent(&event);
+  }
+}
+
+auto render_imgui(vk::CommandBuffer commandbuffer) -> void {
+  ImGui::Render();
+  ImDrawData *draw_data = ImGui::GetDrawData();
+  auto imgui_pipeline = VkPipeline{VK_NULL_HANDLE};
+  ImGui_ImplVulkan_RenderDrawData(draw_data, commandbuffer, imgui_pipeline);
+}
+
+auto Renderer::destroy() -> void {
+  destroy_imgui();
+  g_instance.reset();
+}
 
 [[nodiscard]]
 auto Renderer::initialize(const InitializeConfig &config) -> bool {
@@ -948,6 +1064,10 @@ auto Renderer::initialize(const InitializeConfig &config) -> bool {
     return false;
   }
 
+  if (!initialize_imgui()) {
+    return false;
+  }
+
   return true;
 }
 
@@ -981,6 +1101,10 @@ auto wait_for_next_frame() -> void {
 
 auto Renderer::begin_frame() -> void {
   wait_for_next_frame();
+
+  ImGui_ImplVulkan_NewFrame();
+  ImGui_ImplSDL2_NewFrame();
+  ImGui::NewFrame();
 
   const auto duration = RendererImpl::instance().deltatime_timer.stop();
 
@@ -1022,6 +1146,9 @@ auto projection_matrix() -> glm::mat4 {
 }
 
 auto Renderer::end_frame() -> void {
+
+  process_events_imgui();
+
   RendererImpl::instance()
       .uniform_arenas[RendererImpl::instance().flightframe]
       .reset();
@@ -1275,6 +1402,7 @@ auto Renderer::end_frame() -> void {
       commandbuffer.drawIndexed(mesh->indices_count, 1, 0, 0, 0);
     }
 
+    render_imgui(commandbuffer);
     commandbuffer.endRenderPass();
   });
 

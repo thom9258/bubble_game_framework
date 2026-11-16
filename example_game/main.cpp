@@ -7,6 +7,7 @@
 #include <bubble/timer.hpp>
 
 #include <bubble/internal/glm.hpp>
+#include <bubble/internal/imgui.hpp>
 #include <bubble/internal/sdl.hpp>
 
 #include <print>
@@ -16,7 +17,7 @@ int main(int argc, char **argv) {
   static_cast<void>(argv);
 
   auto bubble =
-      bubble::Bubble<bubble::Context, bubble::Resources, bubble::Renderer>{};
+      bubble::Bubble<BUBBLE_REQUIRED_SYSTEMS>{};
 
   bubble::Timer init_timer;
   init_timer.start();
@@ -93,6 +94,10 @@ int main(int argc, char **argv) {
         glm::translate(cube_location, glm::vec3(2.0f, 0.0f, 0.0f)),
         bubble::Resources::default_mesh(),
         bubble::Resources::default_texture());
+
+	ImGui::Begin("My DearImGui Window");
+	ImGui::Text("hello, world");
+	ImGui::End();
 
     bubble.end_frame();
   }

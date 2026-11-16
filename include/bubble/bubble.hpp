@@ -7,6 +7,8 @@
 #include <tuple>
 #include <type_traits>
 
+#define BUBBLE_REQUIRED_SYSTEMS bubble::Context, bubble::Resources, bubble::Renderer
+
 namespace bubble {
 
 template <System... Systems> class Bubble {

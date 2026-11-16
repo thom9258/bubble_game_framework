@@ -120,10 +120,11 @@ auto initialize_vulkan_instance(const InitializeConfig &config) -> bool {
   if (config.options.enable_graphics_validation) {
     instanceCreateInfo.setEnabledLayerCount(validation_layers.size());
     instanceCreateInfo.setPpEnabledLayerNames(validation_layers.data());
-    LOG_INFO("Enabled validation layers:");
-    for (auto layer : validation_layers) {
-      LOG_INFO("  {}", layer);
-    }
+  }
+
+  LOG_INFO("Enabled validation layers:");
+  for (auto layer : validation_layers) {
+    LOG_INFO("  {}", layer);
   }
 
   ContextImpl::instance().vkinstance =

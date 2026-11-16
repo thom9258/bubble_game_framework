@@ -19,6 +19,33 @@ find_package(Vulkan REQUIRED)
 find_package(SDL2 REQUIRED)
 find_package(glm REQUIRED)
 
+
+include(FetchContent)
+message(STATUS "Fetching ImGUI")
+FetchContent_Declare(imgui_external
+  GIT_REPOSITORY https://github.com/ocornut/imgui.git
+  GIT_TAG v1.92.8
+  GIT_SHALLOW TRUE
+  GIT_PROGRESS TRUE
+)
+
+FetchContent_MakeAvailable(imgui_external)
+
+add_library(imgui
+  ${imgui_external_SOURCE_DIR}/imgui.cpp
+  ${imgui_external_SOURCE_DIR}/imgui_draw.cpp
+  ${imgui_external_SOURCE_DIR}/imgui_tables.cpp
+  ${imgui_external_SOURCE_DIR}/imgui_widgets.cpp
+  ${imgui_external_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
+  ${imgui_external_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
+)
+
+target_include_directories(imgui
+PUBLIC
+   ${imgui_external_SOURCE_DIR}
+   ${SDL2_INCLUDE_DIRS}
+)
+
 set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/source/context.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/renderer.cpp
@@ -39,18 +66,20 @@ add_library(${PROJECT_NAME} ${SOURCES})
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_23)
 
 set(COMPILE_AND_EMBED_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/shaders/compile_and_embed.py")
+set(SHADER_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/shaders")
+file(GLOB SHADER_SHARED_FILES CONFIGURE_DEPENDS "${SHADER_INCLUDE_DIR}/*.shared")
 set(GENERATED_SHADERS_DIR "${CMAKE_CURRENT_BINARY_DIR}/generated/embedded_shaders")
 file(MAKE_DIRECTORY ${GENERATED_SHADERS_DIR})
 
 function(compile_and_embed_shader SHADER_FILENAME VAR_NAME OUTPUT_HEADER_NAME)
-    set(SHADER_PATH "${CMAKE_CURRENT_SOURCE_DIR}/${SHADER_FILENAME}")
+    set(SHADER_PATH "${CMAKE_CURRENT_SOURCE_DIR}/shaders/${SHADER_FILENAME}")
     set(HEADER_FILE "${GENERATED_SHADERS_DIR}/${OUTPUT_HEADER_NAME}")
     
     add_custom_command(
         OUTPUT ${HEADER_FILE}
         COMMAND Python3::Interpreter ${COMPILE_AND_EMBED_SCRIPT} 
-                ${GLSLC_EXECUTABLE} ${SHADER_PATH} ${HEADER_FILE} ${VAR_NAME}
-        DEPENDS ${SHADER_PATH} ${COMPILE_AND_EMBED_SCRIPT}
+                ${GLSLC_EXECUTABLE} ${SHADER_PATH} ${HEADER_FILE} ${VAR_NAME} ${SHADER_INCLUDE_DIR}
+        DEPENDS ${SHADER_PATH} ${COMPILE_AND_EMBED_SCRIPT} ${SHADER_SHARED_FILES}
         COMMENT "Compiles and bakes GLSL '${SHADER_FILENAME}'"
         VERBATIM
     )
@@ -59,10 +88,10 @@ function(compile_and_embed_shader SHADER_FILENAME VAR_NAME OUTPUT_HEADER_NAME)
     target_sources(${PROJECT_NAME} PRIVATE ${HEADER_FILE})
 endfunction()
 
-compile_and_embed_shader("shaders/flatcolor.vert" "flatcolor_vert" "flatcolor_vert.hpp")
-compile_and_embed_shader("shaders/flatcolor.frag" "flatcolor_frag" "flatcolor_frag.hpp")
-compile_and_embed_shader("shaders/texture.vert" "texture_vert" "texture_vert.hpp")
-compile_and_embed_shader("shaders/texture.frag" "texture_frag" "texture_frag.hpp")
+compile_and_embed_shader("flatcolor.vert" "flatcolor_vert" "flatcolor_vert.hpp")
+compile_and_embed_shader("flatcolor.frag" "flatcolor_frag" "flatcolor_frag.hpp")
+compile_and_embed_shader("texture.vert" "texture_vert" "texture_vert.hpp")
+compile_and_embed_shader("texture.frag" "texture_frag" "texture_frag.hpp")
 
 target_include_directories(${PROJECT_NAME} 
     PUBLIC 
@@ -77,5 +106,6 @@ target_link_libraries(${PROJECT_NAME}
     SDL2::SDL2
     Vulkan::Vulkan
     glm::glm
+    imgui
 )
 

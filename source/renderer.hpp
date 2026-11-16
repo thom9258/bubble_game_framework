@@ -1,6 +1,7 @@
 #pragma once
 
 #include <bubble/internal/glm.hpp>
+#include <bubble/internal/imgui.hpp>
 #include <bubble/timer.hpp>
 
 #include "bubble/renderer.hpp"
@@ -88,6 +89,11 @@ public:
       vk::UniqueDescriptorSetLayout diffuse_layout;
       std::vector<vk::DescriptorSet> modelinfo_sets;
     } texture;
+
+    struct {
+      vk::UniqueDescriptorPool pool;
+      float ui_scale{1.0f};
+    } imgui;
 
   } pipe;
 
