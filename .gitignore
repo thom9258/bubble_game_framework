@@ -1,0 +1,5 @@
+.cache
+gmon.out
+CMakeUserPresets.json
+compile_commands.json
+build/
