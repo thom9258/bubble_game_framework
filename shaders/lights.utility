@@ -1,85 +1,42 @@
-#define SHININESS 32
-#define SHADOW_BIAS 0.005
+struct HemisphereLight
+{
+	vec3 ground;
+	vec3 sky;
+    float intensity;
+};	
 
 struct DirectionalLight
 {
 	vec3 direction;
-	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
+	vec3 color;
+    float intensity;
 };	
 
 struct PointLight
 {
 	vec3 position;
-	vec3 ambient;
-	vec3 diffuse;
-	vec3 specular;
-	vec3 attenuation;
-	// attenuation.x = constant
-	// attenuation.y = linear
-	// attenuation.z = quadratic
-};	
+	vec3 color;
+    float intensity;
+};
 
-vec3 calculate_directional_light(DirectionalLight light)
+vec3 hemisphere_light(HemisphereLight light, vec3 normal)
 {
-    vec3 lightDir = normalize(-light.direction);
-    vec3 viewDir = normalize(view_position - frag_position);
-
-    // diffuse shading
-    vec3 normal = normalize(vertex_normal);
-    float diff = max(dot(normal, lightDir), 0.0);
-
-    // specular shading
-    vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), SHININESS);
-
-    // combine results
-    vec3 ambient = light.ambient * vec3(texture(diffuse, texcoord));
-    vec3 diffuse = light.diffuse * diff * vec3(texture(diffuse, texcoord));
-    vec3 specular = light.specular * spec * vec3(texture(specular, texcoord));
-	
-
-	float normal_dot_length = dot(normal, lightDir);
-	if (normal_dot_length > 0.0) 
-		return (ambient + diffuse + specular);
-	else
-		return ambient;
+    // Blend from ground to sky based on how much the normal points up
+    float t = normal.y * 0.5 + 0.5;
+    return mix(light.ground, light.sky, t) * light.intensity;
 }
 
-vec3 calculate_point_light(PointLight light)
+vec3 directional_light(DirectionalLight light, vec3 normal)
 {
-    vec3 lightDir = normalize(light.position - frag_position);
-    vec3 viewDir = normalize(view_position - frag_position);
-
-    // diffuse shading
-    vec3 normal = normalize(vertex_normal);
-    float diff = max(dot(normal, lightDir), 0.0);
-
-    // specular shading
-    vec3 reflectDir = reflect(-lightDir, normal);
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), SHININESS);
-
-    // attenuation
-    float distance = length(light.position - frag_position);
-    float constant = light.attenuation.x;
-    float linear = light.attenuation.y;
-    float quadratic = light.attenuation.z;
-    float attenuation = 1.0 / (constant + linear * distance + quadratic * (distance * distance));    
-
-    // combine results
-    vec3 ambient = light.ambient * vec3(texture(diffuse, texcoord));
-    vec3 diffuse = light.diffuse * diff * vec3(texture(diffuse, texcoord));
-    vec3 specular = light.specular * spec * vec3(texture(specular, texcoord));
-    ambient *= attenuation;
-    diffuse *= attenuation;
-    specular *= attenuation;
-	
-	float normal_dot_length = dot(normal, lightDir);
-	if (normal_dot_length > 0.0) 
-		return (ambient + diffuse + specular);
-	else
-		return ambient;
+    float ndl = max(dot(normal, -normalize(light.direction)), 0.0);
+    return light.color * light.intensity * ndl;
 }
 
-
+vec3 point_light(PointLight light, vec3 normal, vec3 world_position)
+{
+    vec3  to_light = light.position - world_position;
+    float dist2    = dot(to_light, to_light);
+    float ndl      = max(dot(normal, to_light * inversesqrt(dist2)), 0.0);
+    // intensity controls both brightness and reach; intensity = 0 turns the slot off
+    return light.color * light.intensity * ndl / (1.0 + dist2);
+}

@@ -7,6 +7,8 @@ layout(location = 1) in vec3 in_normal;
 layout(location = 2) in vec2 in_texcoord;
 
 layout(location = 0) out vec2 out_texcoord;
+layout(location = 1) out vec3 out_normal;
+layout(location = 2) out vec3 out_world_position;
 
 layout(set = 0, binding = 0, std140) uniform InfoBlock
 {
@@ -15,8 +17,9 @@ layout(set = 0, binding = 0, std140) uniform InfoBlock
 
 
 void main() {
-    const mat4 transform = info.projection * info.view * info.model;
-	const vec4 position = transform * vec4(in_position, 1.0f);
-	gl_Position = position;
+    const vec4 world_position = info.model * vec4(in_position, 1.0);
+	gl_Position = info.projection * info.view * world_position;
     out_texcoord = in_texcoord;
+    out_normal = mat3(info.model) * normalize(in_normal);
+    out_world_position = vec3(world_position);
 }

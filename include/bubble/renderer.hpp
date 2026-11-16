@@ -26,13 +26,6 @@ struct PointLight {
   float intensity;
 };
 
-struct SpotLight {
-  glm::vec3 position;
-  glm::vec3 direction;
-  Color color;
-  float intensity;
-};
-
 class Renderer {
 public:
   [[nodiscard]]
@@ -46,13 +39,11 @@ public:
 
   static auto set_clearcolor(Color color) -> void;
 
-  static auto add_light(HemisphereLight light);
+  static auto add_light(HemisphereLight light) -> void;
 
-  static auto add_light(DirectionalLight light);
+  static auto add_light(DirectionalLight light) -> void;
 
-  static auto add_light(PointLight light);
-
-  static auto add_light(SpotLight light);
+  static auto add_light(PointLight light) -> void;
 
   static auto set_camera(Camera camera) -> void;
 

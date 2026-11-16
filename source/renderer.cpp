@@ -1,4 +1,5 @@
 #include "renderer.hpp"
+#include "bubble/renderer.hpp"
 #include "context.hpp"
 #include "flat_sorted_set.hpp"
 #include "resources.hpp"
@@ -14,12 +15,45 @@
 #include <fstream>
 #include <print>
 #include <ranges>
+#include <algorithm>
 
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_enums.hpp>
 #include <vulkan/vulkan_structs.hpp>
 
 namespace bubble {
+
+auto to_uniform(HemisphereLight l) -> HemisphereLightUniform {
+  auto u = HemisphereLightUniform{};
+  u.color[0] = l.color.r / 255.0f;
+  u.color[1] = l.color.g / 255.0f;
+  u.color[2] = l.color.b / 255.0f;
+  u.sky[0] = l.sky.r / 255.0f;
+  u.sky[1] = l.sky.g / 255.0f;
+  u.sky[2] = l.sky.b / 255.0f;
+  u.intensity = l.intensity;
+  return u;
+}
+
+auto to_uniform(DirectionalLight l) -> DirectionalLightUniform {
+  auto u = DirectionalLightUniform{};
+  u.direction = l.direction;
+  u.color[0] = l.color.r / 255.0f;
+  u.color[1] = l.color.g / 255.0f;
+  u.color[2] = l.color.b / 255.0f;
+  u.intensity = l.intensity;
+  return u;
+}
+
+auto to_uniform(PointLight l) -> PointLightUniform {
+  auto u = PointLightUniform{};
+  u.position = l.position;
+  u.color[0] = l.color.r / 255.0f;
+  u.color[1] = l.color.g / 255.0f;
+  u.color[2] = l.color.b / 255.0f;
+  u.intensity = l.intensity;
+  return u;
+}
 
 static std::unique_ptr<RendererImpl> g_instance{nullptr};
 
@@ -744,7 +778,8 @@ auto initialize_texture_pipe() -> bool {
 
   const auto modelinfo_bindings = std::array{
       vk::DescriptorSetLayoutBinding{}
-          .setStageFlags(vk::ShaderStageFlagBits::eVertex)
+          .setStageFlags(vk::ShaderStageFlagBits::eVertex |
+                         vk::ShaderStageFlagBits::eFragment)
           .setDescriptorType(vk::DescriptorType::eUniformBufferDynamic)
           .setBinding(0)
           .setDescriptorCount(1),
@@ -1121,6 +1156,15 @@ auto Renderer::begin_frame() -> void {
       .drawtexture.clear();
   RendererImpl::instance()
       .frames[RendererImpl::instance().flightframe]
+      .hemisphere_lights.clear();
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .directional_lights.clear();
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .point_lights.clear();
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
       .texture_diffuse_sets.reset();
   ContextImpl::device().resetDescriptorPool(
       RendererImpl::instance()
@@ -1372,6 +1416,33 @@ auto Renderer::end_frame() -> void {
         uniform.view = view_matrix();
         uniform.projection = projection_matrix();
 
+        auto &hemisphere_lights =
+            RendererImpl::instance()
+                .frames[RendererImpl::instance().flightframe]
+                .hemisphere_lights;
+
+        if (!hemisphere_lights.empty()) {
+          uniform.hemisphere_light = to_uniform(hemisphere_lights[0]);
+        }
+
+        auto &directional_lights =
+            RendererImpl::instance()
+                .frames[RendererImpl::instance().flightframe]
+                .directional_lights;
+
+        if (!directional_lights.empty()) {
+          uniform.directional_light = to_uniform(directional_lights[0]);
+        }
+
+        auto &point_lights = RendererImpl::instance()
+                                 .frames[RendererImpl::instance().flightframe]
+                                 .point_lights;
+
+        const auto point_lights_size = std::min(point_lights.size(), std::size_t{4});
+        for (std::size_t i = 0; i < point_lights_size; i++) {
+          uniform.point_lights[i] = to_uniform(point_lights[i]);
+        }
+
         auto allocation =
             RendererImpl::instance()
                 .uniform_arenas[RendererImpl::instance().flightframe]
@@ -1602,6 +1673,24 @@ auto Renderer::draw_textured(glm::mat4 location, MeshRef mesh,
   RendererImpl::instance()
       .frames[RendererImpl::instance().flightframe]
       .drawtexture.emplace_back(location, mesh, texture);
+}
+
+auto Renderer::add_light(HemisphereLight light) -> void {
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .hemisphere_lights.push_back(light);
+}
+
+auto Renderer::add_light(DirectionalLight light) -> void {
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .directional_lights.push_back(light);
+}
+
+auto Renderer::add_light(PointLight light) -> void {
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .point_lights.push_back(light);
 }
 
 auto Renderer::deltatime() -> std::optional<double> {

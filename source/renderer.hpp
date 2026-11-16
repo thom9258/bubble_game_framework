@@ -33,11 +33,31 @@ struct FlatColorUniform {
   alignas(sizeof(glm::vec4)) glm::vec3 color;
 };
 
+struct HemisphereLightUniform {
+  alignas(sizeof(glm::vec4)) glm::vec3 color;
+  alignas(sizeof(glm::vec4)) glm::vec3 sky;
+  float intensity;
+};
+
+struct DirectionalLightUniform {
+  alignas(sizeof(glm::vec4)) glm::vec3 direction;
+  alignas(sizeof(glm::vec4)) glm::vec3 color;
+  float intensity;
+};
+
+struct PointLightUniform {
+  alignas(sizeof(glm::vec4)) glm::vec3 position;
+  alignas(sizeof(glm::vec4)) glm::vec3 color;
+  float intensity;
+};
+
 struct TextureUniform {
   glm::mat4 model;
   glm::mat4 view;
   glm::mat4 projection;
-  // DirectionalLight directional_light;
+  HemisphereLightUniform hemisphere_light;
+  DirectionalLightUniform directional_light;
+  PointLightUniform point_lights[4];
 };
 
 class RendererImpl {
@@ -102,6 +122,9 @@ public:
     vk::UniqueDescriptorPool diffuse_pool;
     std::vector<DrawFlatColor> drawflatcolor;
     std::vector<DrawTexture> drawtexture;
+    std::vector<HemisphereLight> hemisphere_lights;
+    std::vector<DirectionalLight> directional_lights;
+    std::vector<PointLight> point_lights;
   };
 
   std::vector<Frame> frames;

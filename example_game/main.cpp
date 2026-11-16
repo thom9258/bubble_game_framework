@@ -16,8 +16,7 @@ int main(int argc, char **argv) {
   static_cast<void>(argc);
   static_cast<void>(argv);
 
-  auto bubble =
-      bubble::Bubble<BUBBLE_REQUIRED_SYSTEMS>{};
+  auto bubble = bubble::Bubble<BUBBLE_REQUIRED_SYSTEMS>{};
 
   bubble::Timer init_timer;
   init_timer.start();
@@ -95,9 +94,22 @@ int main(int argc, char **argv) {
         bubble::Resources::default_mesh(),
         bubble::Resources::default_texture());
 
-	ImGui::Begin("My DearImGui Window");
-	ImGui::Text("hello, world");
-	ImGui::End();
+    auto directional_light = bubble::DirectionalLight{};
+    directional_light.direction = {-0.4F, -1.0F, -0.3F};
+    directional_light.color = {255, 240, 210, 255};
+    directional_light.intensity = 0.8F;
+
+    auto hemisphere_light = bubble::HemisphereLight{};
+    hemisphere_light.color = {70, 60, 50, 255};
+    hemisphere_light.sky = {150, 170, 200, 255};
+    hemisphere_light.intensity = 0.6F;
+
+    bubble::Renderer::add_light(directional_light);
+    bubble::Renderer::add_light(hemisphere_light);
+
+    ImGui::Begin("My DearImGui Window");
+    ImGui::Text("hello, world");
+    ImGui::End();
 
     bubble.end_frame();
   }
