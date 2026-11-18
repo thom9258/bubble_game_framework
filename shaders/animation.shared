@@ -1,0 +1,17 @@
+#include "lights.utility"
+#include "animation.utility"
+
+#define POINT_LIGHT_COUNT 4
+
+struct Info
+{
+	mat4 model;
+	mat4 view;
+	mat4 projection;
+
+    HemisphereLight hemisphere_light;
+    DirectionalLight directional_light;
+    PointLight point_lights[POINT_LIGHT_COUNT];
+
+	mat4 animation_bones[MAX_BONES];
+};
