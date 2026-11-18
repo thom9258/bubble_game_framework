@@ -16,11 +16,30 @@ struct Vertex {
   float texture_coordinate[2];
 };
 
+struct AnimatedVertex {
+  float position[3];
+  float normal[3];
+  float texture_coordinate[2];
+  int bone_ids[4];
+  float bone_weights[4];
+};
+
 using Index = std::uint32_t;
 
 class MeshRef {
 public:
   MeshRef(std::uint32_t index, std::uint32_t generation);
+  auto index() const -> std::uint32_t;
+  auto generation() const -> std::uint32_t;
+
+private:
+  std::uint32_t _index;
+  std::uint32_t _generation;
+};
+
+class AnimatedMeshRef {
+public:
+  AnimatedMeshRef(std::uint32_t index, std::uint32_t generation);
   auto index() const -> std::uint32_t;
   auto generation() const -> std::uint32_t;
 
@@ -48,10 +67,18 @@ public:
   static auto destroy() -> void;
 
   [[nodiscard]]
-  static auto create_mesh(std::span<const Vertex> vertices, std::span<const Index> indices)
+  static auto create_mesh(std::span<const Vertex> vertices,
+                          std::span<const Index> indices)
       -> std::optional<MeshRef>;
 
   static auto destroy_mesh(MeshRef ref) -> void;
+
+  [[nodiscard]]
+  static auto create_animated_mesh(std::span<const AnimatedVertex> vertices,
+                                   std::span<const Index> indices)
+      -> std::optional<AnimatedMeshRef>;
+
+  static auto destroy_animated_mesh(AnimatedMeshRef ref) -> void;
 
   [[nodiscard]]
   static auto create_texture(Bitmap &bitmap) -> std::optional<TextureRef>;

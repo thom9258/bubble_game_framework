@@ -2,6 +2,9 @@
 
 #include <cstdint>
 #include <vector>
+#include <string>
+#include <filesystem>
+#include <expected>
 
 namespace bubble {
 
@@ -13,7 +16,6 @@ struct Color {
 };
 
 namespace color {
-
 inline constexpr const auto red = Color{255, 0, 0, 255};
 inline constexpr const auto green = Color{0, 255, 0, 255};
 inline constexpr const auto blue = Color{0, 0, 255, 255};
@@ -39,5 +41,7 @@ private:
   std::uint32_t _height{0};
   std::vector<Color> _pixels;
 };
+
+auto load_bitmap(std::filesystem::path path) -> std::expected<Bitmap, std::string>;
 
 } // namespace bubble

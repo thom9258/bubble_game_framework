@@ -11,11 +11,11 @@
 #include "embedded_shaders/texture_frag.hpp"
 #include "embedded_shaders/texture_vert.hpp"
 
+#include <algorithm>
 #include <filesystem>
 #include <fstream>
 #include <print>
 #include <ranges>
-#include <algorithm>
 
 #include <vulkan/vulkan_core.h>
 #include <vulkan/vulkan_enums.hpp>
@@ -164,7 +164,9 @@ auto initialize_swapchain(const InitializeConfig &config) -> bool {
           .setImageColorSpace(
               RendererImpl::instance().swapchain_format.colorSpace)
           .setImageExtent(
-              vk::Extent2D{}.setWidth(config.width).setHeight(config.height))
+              vk::Extent2D{}
+                  .setWidth(static_cast<std::uint32_t>(config.width))
+                  .setHeight(static_cast<std::uint32_t>(config.height)))
           .setImageArrayLayers(1)
           .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment |
                          vk::ImageUsageFlagBits::eTransferSrc |
@@ -228,7 +230,8 @@ auto initialize_swapchain_imageviews() -> bool {
 
   for (auto [i, view] :
        RendererImpl::instance().swapchain_imageviews | std::views::enumerate) {
-    imageViewCreateInfo.setImage(RendererImpl::instance().swapchain_images[i]);
+    imageViewCreateInfo.setImage(
+        RendererImpl::instance().swapchain_images[static_cast<std::size_t>(i)]);
     view = ContextImpl::device().createImageViewUnique(imageViewCreateInfo);
   }
 
@@ -299,7 +302,9 @@ auto initialize_descriptorpool() -> bool {
 
 auto initialize_mainpass_attachments(const InitializeConfig &config) -> bool {
   RendererImpl::instance().mainpass.extent =
-      vk::Extent2D{}.setWidth(config.width).setHeight(config.height);
+      vk::Extent2D{}
+          .setWidth(static_cast<std::uint32_t>(config.width))
+          .setHeight(static_cast<std::uint32_t>(config.height));
 
   for (std::size_t i = 0; i < frames_in_flight; i++) {
     const auto color_usage = vk::ImageUsageFlagBits::eTransferDst |
@@ -639,8 +644,8 @@ auto initialize_flatcolor_sets() -> bool {
     writes.push_back(write);
   }
 
-  ContextImpl::device().updateDescriptorSets(writes.size(), writes.data(), 0,
-                                             nullptr);
+  ContextImpl::device().updateDescriptorSets(
+      static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
   return true;
 }
 
@@ -891,8 +896,8 @@ auto initialize_texture_sets() -> bool {
     writes.push_back(write);
   }
 
-  ContextImpl::device().updateDescriptorSets(writes.size(), writes.data(), 0,
-                                             nullptr);
+  ContextImpl::device().updateDescriptorSets(
+      static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
   return true;
 }
 
@@ -1154,6 +1159,9 @@ auto Renderer::begin_frame() -> void {
   RendererImpl::instance()
       .frames[RendererImpl::instance().flightframe]
       .drawtexture.clear();
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .drawanimation.clear();
   RendererImpl::instance()
       .frames[RendererImpl::instance().flightframe]
       .hemisphere_lights.clear();
@@ -1438,7 +1446,8 @@ auto Renderer::end_frame() -> void {
                                  .frames[RendererImpl::instance().flightframe]
                                  .point_lights;
 
-        const auto point_lights_size = std::min(point_lights.size(), std::size_t{4});
+        const auto point_lights_size =
+            std::min(point_lights.size(), std::size_t{4});
         for (std::size_t i = 0; i < point_lights_size; i++) {
           uniform.point_lights[i] = to_uniform(point_lights[i]);
         }
@@ -1552,8 +1561,10 @@ auto Renderer::end_frame() -> void {
     const auto src_offsets =
         std::array{vk::Offset3D{}.setX(0).setY(0).setZ(0),
                    vk::Offset3D{}
-                       .setX(RendererImpl::instance().mainpass.extent.width)
-                       .setY(RendererImpl::instance().mainpass.extent.height)
+                       .setX(static_cast<std::int32_t>(
+                           RendererImpl::instance().mainpass.extent.width))
+                       .setY(static_cast<std::int32_t>(
+                           RendererImpl::instance().mainpass.extent.height))
                        .setZ(1)};
 
     auto dst_subresource = vk::ImageSubresourceLayers{}
@@ -1565,8 +1576,10 @@ auto Renderer::end_frame() -> void {
     const auto dst_offsets =
         std::array{vk::Offset3D{}.setX(0).setY(0).setZ(0),
                    vk::Offset3D{}
-                       .setX(RendererImpl::instance().mainpass.extent.width)
-                       .setY(RendererImpl::instance().mainpass.extent.height)
+                       .setX(static_cast<std::int32_t>(
+                           RendererImpl::instance().mainpass.extent.width))
+                       .setY(static_cast<std::int32_t>(
+                           RendererImpl::instance().mainpass.extent.height))
                        .setZ(1)};
 
     auto image_blit = vk::ImageBlit{}
@@ -1673,6 +1686,14 @@ auto Renderer::draw_textured(glm::mat4 location, MeshRef mesh,
   RendererImpl::instance()
       .frames[RendererImpl::instance().flightframe]
       .drawtexture.emplace_back(location, mesh, texture);
+}
+
+auto Renderer::draw_animated(glm::mat4 location, AnimatedMeshRef mesh,
+                             TextureRef texture,
+                             animation::Animation &animation) -> void {
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .drawanimation.emplace_back(location, mesh, texture, &animation);
 }
 
 auto Renderer::add_light(HemisphereLight light) -> void {

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "bubble/animation.hpp"
 #include <bubble/bitmap.hpp>
 #include <bubble/camera.hpp>
 #include <bubble/internal/glm.hpp>
@@ -52,6 +53,10 @@ public:
 
   static auto draw_textured(glm::mat4 location, MeshRef mesh,
                             TextureRef texture) -> void;
+
+  static auto draw_animated(glm::mat4 location, AnimatedMeshRef mesh,
+                            TextureRef texture, animation::Animation &animation)
+      -> void;
 
   static auto deltatime() -> std::optional<double>;
 

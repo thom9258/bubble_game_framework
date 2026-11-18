@@ -8,6 +8,20 @@
 #include "direct_buffer.hpp"
 #include "renderer.hpp"
 
+#if defined(__GNUC__) || defined(__clang__)
+#  pragma GCC diagnostic push
+#  pragma GCC diagnostic ignored "-Wsign-conversion"
+#  pragma GCC diagnostic ignored "-Wconversion"
+#  pragma GCC diagnostic ignored "-Wcast-qual"
+#endif
+
+#define CGLTF_IMPLEMENTATION
+#include <cgltf.h>
+
+#if defined(__GNUC__) || defined(__clang__)
+#  pragma GCC diagnostic pop
+#endif
+
 #include <memory>
 #include <span>
 
@@ -63,14 +77,14 @@ auto cube_indices() -> std::span<const Index> {
 auto checkerboard_bitmap() -> Bitmap {
 
   auto bitmap = bubble::Bitmap(64, 64, bubble::Color(255, 255, 0, 255));
-  for (std::size_t i = 0; i < 32; i++) {
-    for (std::size_t j = 0; j < 32; j++) {
+  for (std::uint32_t i = 0; i < 32; i++) {
+    for (std::uint32_t j = 0; j < 32; j++) {
       *bitmap.at(i, j) = bubble::color::red;
     }
   }
 
-  for (std::size_t i = 32; i < 64; i++) {
-    for (std::size_t j = 32; j < 64; j++) {
+  for (std::uint32_t i = 32; i < 64; i++) {
+    for (std::uint32_t j = 32; j < 64; j++) {
       *bitmap.at(i, j) = bubble::color::red;
     }
   }
@@ -109,6 +123,10 @@ auto ResourcesImpl::get(MeshRef ref) -> MeshSource * {
   return mesh_sources.get(Ref(ref.index(), ref.generation()));
 }
 
+auto ResourcesImpl::get(AnimatedMeshRef ref) -> AnimatedMeshSource * {
+  return animated_mesh_sources.get(Ref(ref.index(), ref.generation()));
+}
+
 auto ResourcesImpl::get(TextureRef ref) -> TextureSource * {
   return texture_sources.get(Ref(ref.index(), ref.generation()));
 }
@@ -119,6 +137,13 @@ MeshRef::MeshRef(std::uint32_t index, std::uint32_t generation)
 auto MeshRef::index() const -> std::uint32_t { return _index; }
 
 auto MeshRef::generation() const -> std::uint32_t { return _generation; }
+
+AnimatedMeshRef::AnimatedMeshRef(std::uint32_t index, std::uint32_t generation)
+    : _index{index}, _generation{generation} {}
+
+auto AnimatedMeshRef::index() const -> std::uint32_t { return _index; }
+
+auto AnimatedMeshRef::generation() const -> std::uint32_t { return _generation; }
 
 TextureRef::TextureRef(std::uint32_t index, std::uint32_t generation)
     : _index{index}, _generation{generation} {}
@@ -190,6 +215,72 @@ auto Resources::destroy_mesh(MeshRef ref) -> void {
   ResourcesImpl::instance().mesh_sources.remove(
       Ref(ref.index(), ref.generation()));
 }
+
+auto Resources::create_animated_mesh(std::span<const AnimatedVertex> vertices,
+                            std::span<const Index> indices)
+    -> std::optional<AnimatedMeshRef> {
+  const auto vertices_stager_usage = vk::BufferUsageFlagBits::eTransferSrc |
+                                     vk::BufferUsageFlagBits::eTransferDst;
+  const auto vertices_allocation_size = sizeof(vertices[0]) * vertices.size();
+  auto vertices_stager =
+      DirectBuffer(vertices_stager_usage, vertices_allocation_size);
+  std::memcpy(vertices_stager.ptr(), &vertices[0], vertices_allocation_size);
+
+  const auto indices_stager_usage = vk::BufferUsageFlagBits::eTransferSrc |
+                                    vk::BufferUsageFlagBits::eTransferDst;
+  const auto indices_allocation_size = sizeof(indices[0]) * indices.size();
+  auto indices_stager =
+      DirectBuffer(indices_stager_usage, indices_allocation_size);
+  std::memcpy(indices_stager.ptr(), &indices[0], indices_allocation_size);
+
+  const auto vertices_buffer_usage = vk::BufferUsageFlagBits::eVertexBuffer |
+                                     vk::BufferUsageFlagBits::eTransferDst;
+  auto vertices_buffer =
+      GPUBuffer(vertices_buffer_usage, vertices_allocation_size);
+
+  const auto indices_buffer_usage = vk::BufferUsageFlagBits::eIndexBuffer |
+                                    vk::BufferUsageFlagBits::eTransferDst;
+  auto indices_buffer =
+      GPUBuffer(indices_buffer_usage, vertices_allocation_size);
+
+  vk::Result result =
+      ContextImpl::immediate_evaluate([&](vk::CommandBuffer commandbuffer) {
+        auto vertices_copy =
+            vk::BufferCopy{}.setSrcOffset(0).setDstOffset(0).setSize(
+                vertices_allocation_size);
+
+        commandbuffer.copyBuffer(vertices_stager.buffer(),
+                                 vertices_buffer.buffer(), {vertices_copy});
+
+        auto indices_copy =
+            vk::BufferCopy{}.setSrcOffset(0).setDstOffset(0).setSize(
+                indices_allocation_size);
+
+        commandbuffer.copyBuffer(indices_stager.buffer(),
+                                 indices_buffer.buffer(), {indices_copy});
+      });
+
+  if (result != vk::Result::eSuccess) {
+    return std::nullopt;
+  }
+
+  auto ref = ResourcesImpl::instance().animated_mesh_sources.add(
+      AnimatedMeshSource(std::move(vertices_buffer), std::move(indices_buffer),
+                 static_cast<std::uint32_t>(indices.size())));
+
+  if (!ref.has_value()) {
+    return std::nullopt;
+  }
+
+  return AnimatedMeshRef(ref->index(), ref->generation());
+}
+
+auto Resources::destroy_animated_mesh(AnimatedMeshRef ref) -> void {
+  ResourcesImpl::instance().animated_mesh_sources.remove(
+      Ref(ref.index(), ref.generation()));
+}
+
+
 
 auto Resources::create_texture(Bitmap &bitmap) -> std::optional<TextureRef> {
 

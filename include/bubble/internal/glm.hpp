@@ -13,4 +13,4 @@
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtx/string_cast.hpp>
-
+#include <glm/gtx/matrix_interpolation.hpp>

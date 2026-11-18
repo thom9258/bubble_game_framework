@@ -29,7 +29,19 @@ FetchContent_Declare(imgui_external
   GIT_PROGRESS TRUE
 )
 
-FetchContent_MakeAvailable(imgui_external)
+message(STATUS "Fetching cgltf")
+FetchContent_Declare(cgltf
+  GIT_REPOSITORY https://github.com/jkuhlmann/cgltf.git
+  GIT_TAG        v1.14
+  GIT_SHALLOW    TRUE)
+
+message(STATUS "Fetching stb")
+FetchContent_Declare(stb
+  GIT_REPOSITORY https://github.com/nothings/stb.git
+  GIT_TAG        master          # TODO: pin a commit
+  GIT_SHALLOW    TRUE)
+
+FetchContent_MakeAvailable(cgltf stb imgui_external)
 
 add_library(imgui
   ${imgui_external_SOURCE_DIR}/imgui.cpp
@@ -59,6 +71,7 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/source/task_graph.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/uniform_arena.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/input.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/animation.cpp
 )
 
 add_library(${PROJECT_NAME} ${SOURCES})
@@ -92,13 +105,18 @@ compile_and_embed_shader("flatcolor.vert" "flatcolor_vert" "flatcolor_vert.hpp")
 compile_and_embed_shader("flatcolor.frag" "flatcolor_frag" "flatcolor_frag.hpp")
 compile_and_embed_shader("texture.vert" "texture_vert" "texture_vert.hpp")
 compile_and_embed_shader("texture.frag" "texture_frag" "texture_frag.hpp")
+compile_and_embed_shader("animation.vert" "animation_vert" "animation_vert.hpp")
+compile_and_embed_shader("animation.frag" "animation_frag" "animation_frag.hpp")
 
 target_include_directories(${PROJECT_NAME} 
-    PUBLIC 
+PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 
-    PRIVATE
+PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}/generated
+    ${cgltf_SOURCE_DIR}
+    ${stb_SOURCE_DIR}
+
 )
 
 target_link_libraries(${PROJECT_NAME} 

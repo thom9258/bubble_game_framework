@@ -4,6 +4,7 @@
 #include <bubble/internal/imgui.hpp>
 #include <bubble/timer.hpp>
 
+#include "bubble/animation.hpp"
 #include "bubble/renderer.hpp"
 #include "flat_sorted_set.hpp"
 #include "task_graph.hpp"
@@ -25,6 +26,15 @@ struct DrawTexture {
   MeshRef mesh;
   TextureRef diffuse;
 };
+
+struct DrawAnimation {
+  glm::mat4 location;
+  AnimatedMeshRef mesh;
+  TextureRef diffuse;
+  animation::Animation* animation;
+};
+
+
 
 struct FlatColorUniform {
   glm::mat4 model;
@@ -55,9 +65,24 @@ struct TextureUniform {
   glm::mat4 model;
   glm::mat4 view;
   glm::mat4 projection;
+
   HemisphereLightUniform hemisphere_light;
   DirectionalLightUniform directional_light;
   PointLightUniform point_lights[4];
+};
+
+inline constexpr const auto max_animation_bones = std::size_t{100};
+
+struct AnimatedUniform {
+  glm::mat4 model;
+  glm::mat4 view;
+  glm::mat4 projection;
+
+  HemisphereLightUniform hemisphere_light;
+  DirectionalLightUniform directional_light;
+  PointLightUniform point_lights[4];
+
+  glm::mat4 animation_bones[max_animation_bones];
 };
 
 class RendererImpl {
@@ -122,6 +147,7 @@ public:
     vk::UniqueDescriptorPool diffuse_pool;
     std::vector<DrawFlatColor> drawflatcolor;
     std::vector<DrawTexture> drawtexture;
+    std::vector<DrawAnimation> drawanimation;
     std::vector<HemisphereLight> hemisphere_lights;
     std::vector<DirectionalLight> directional_lights;
     std::vector<PointLight> point_lights;
