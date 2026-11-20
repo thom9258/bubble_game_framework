@@ -17,10 +17,15 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 find_package(Vulkan REQUIRED)
 find_package(SDL2 REQUIRED)
-find_package(glm REQUIRED)
-
 
 include(FetchContent)
+message(STATUS "Fetching glm")
+FetchContent_Declare(glm
+  GIT_REPOSITORY https://github.com/g-truc/glm.git
+  GIT_TAG        1.0.1
+  GIT_SHALLOW    TRUE
+)
+
 message(STATUS "Fetching ImGUI")
 FetchContent_Declare(imgui_external
   GIT_REPOSITORY https://github.com/ocornut/imgui.git
@@ -38,10 +43,10 @@ FetchContent_Declare(cgltf
 message(STATUS "Fetching stb")
 FetchContent_Declare(stb
   GIT_REPOSITORY https://github.com/nothings/stb.git
-  GIT_TAG        master          # TODO: pin a commit
+  GIT_TAG        033efa1bcb750136ac98e997d53833b758e0089b
   GIT_SHALLOW    TRUE)
 
-FetchContent_MakeAvailable(cgltf stb imgui_external)
+FetchContent_MakeAvailable(glm cgltf stb imgui_external)
 
 add_library(imgui
   ${imgui_external_SOURCE_DIR}/imgui.cpp
@@ -72,6 +77,8 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/source/uniform_arena.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/input.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/animation.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/stb.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/source_tree.cpp
 )
 
 add_library(${PROJECT_NAME} ${SOURCES})
