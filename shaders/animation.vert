@@ -18,7 +18,22 @@ layout(set = 0, binding = 0, std140) uniform InfoBlock
 	Info info;
 };
 
+void main() {
+    mat4 skin = mat4(0.0);
+    for (int i = 0; i < MAX_BONE_INFLUENCES; i++) {
+        if (in_bone_ids[i] < 0) continue;
+        skin += info.animation_bones[in_bone_ids[i]] * in_bone_weights[i];
+    }
 
+    const vec4 world_position = info.model * skin * vec4(in_position, 1.0);
+    gl_Position = info.projection * info.view * world_position;
+
+    out_texcoord = in_texcoord;
+    out_normal = mat3(transpose(inverse(info.model * skin))) * in_normal; // normalize in frag
+    out_world_position = vec3(world_position);
+}
+
+#if 0
 void main() {
 	mat4 bone_matrices[MAX_BONE_INFLUENCES];
 	for (int i = 0; i < MAX_BONE_INFLUENCES; i++) {
@@ -42,3 +57,4 @@ void main() {
     out_normal = mat3(info.model) * normalize(in_normal);
     out_world_position = vec3(world_position);
 }
+#endif

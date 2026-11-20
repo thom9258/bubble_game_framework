@@ -6,6 +6,8 @@
 #include "uniform_arena.hpp"
 #include <bubble/context.hpp>
 
+#include "embedded_shaders/animation_frag.hpp"
+#include "embedded_shaders/animation_vert.hpp"
 #include "embedded_shaders/flatcolor_frag.hpp"
 #include "embedded_shaders/flatcolor_vert.hpp"
 #include "embedded_shaders/texture_frag.hpp"
@@ -80,7 +82,7 @@ auto initialize_rendergraphs() -> bool {
 }
 
 auto initialize_uniform_arenas() -> bool {
-  static constexpr const auto uniform_arena_size = 1024 * 10;
+  static constexpr const auto uniform_arena_size = 1024 * 1024; // 1 mb
   for (std::size_t i = 0; i < frames_in_flight; i++) {
     RendererImpl::instance().uniform_arenas.emplace_back(uniform_arena_size);
   }
@@ -871,7 +873,6 @@ auto initialize_texture_sets() -> bool {
     const auto alloc_info =
         vk::DescriptorSetAllocateInfo{}
             .setDescriptorSetCount(1)
-            .setDescriptorPool(RendererImpl::instance().pipe.pool.get())
             .setSetLayouts(
                 RendererImpl::instance().pipe.texture.modelinfo_layout.get())
             .setDescriptorPool(RendererImpl::instance().pipe.pool.get());
@@ -889,6 +890,268 @@ auto initialize_texture_sets() -> bool {
         vk::WriteDescriptorSet{}
             .setDescriptorType(vk::DescriptorType::eUniformBufferDynamic)
             .setDstSet(RendererImpl::instance().pipe.texture.modelinfo_sets[i])
+            .setDstBinding(0)
+            .setDescriptorCount(1)
+            .setBufferInfo(buffer_info);
+
+    writes.push_back(write);
+  }
+
+  ContextImpl::device().updateDescriptorSets(
+      static_cast<std::uint32_t>(writes.size()), writes.data(), 0, nullptr);
+  return true;
+}
+
+auto initialize_animation_pipe() -> bool {
+  const auto vertex_module_info =
+      vk::ShaderModuleCreateInfo{}
+          .setFlags(vk::ShaderModuleCreateFlags())
+          .setCode(embedded_shaders::animation_vert::spirv);
+
+  const auto fragment_module_info =
+      vk::ShaderModuleCreateInfo{}
+          .setFlags(vk::ShaderModuleCreateFlags())
+          .setCode(embedded_shaders::animation_frag::spirv);
+
+  auto vertex_module =
+      ContextImpl::device().createShaderModuleUnique(vertex_module_info);
+  auto fragment_module =
+      ContextImpl::device().createShaderModuleUnique(fragment_module_info);
+
+  const auto shaderstage_infos =
+      std::array{vk::PipelineShaderStageCreateInfo{}
+                     .setStage(vk::ShaderStageFlagBits::eVertex)
+                     .setFlags(vk::PipelineShaderStageCreateFlags())
+                     .setModule(vertex_module.get())
+                     .setPName("main"),
+                 vk::PipelineShaderStageCreateInfo{}
+                     .setStage(vk::ShaderStageFlagBits::eFragment)
+                     .setFlags(vk::PipelineShaderStageCreateFlags())
+                     .setModule(fragment_module.get())
+                     .setPName("main")};
+
+  const auto dynamic_states =
+      std::array{vk::DynamicState::eViewport, vk::DynamicState::eScissor};
+
+  const auto dynamic_state_info =
+      vk::PipelineDynamicStateCreateInfo{}.setDynamicStates(dynamic_states);
+
+  const auto vertex_bindings =
+      std::array{vk::VertexInputBindingDescription{}
+                     .setBinding(0)
+                     .setStride(sizeof(AnimatedVertex))
+                     .setInputRate(vk::VertexInputRate::eVertex)};
+
+  const auto vertex_attributes =
+      std::array{vk::VertexInputAttributeDescription{}
+                     .setBinding(0)
+                     .setLocation(0)
+                     .setFormat(vk::Format::eR32G32B32Sfloat)
+                     .setOffset(offsetof(AnimatedVertex, position)),
+                 vk::VertexInputAttributeDescription{}
+                     .setBinding(0)
+                     .setLocation(1)
+                     .setFormat(vk::Format::eR32G32B32Sfloat)
+                     .setOffset(offsetof(AnimatedVertex, normal)),
+                 vk::VertexInputAttributeDescription{}
+                     .setBinding(0)
+                     .setLocation(2)
+                     .setFormat(vk::Format::eR32G32Sfloat)
+                     .setOffset(offsetof(AnimatedVertex, texture_coordinate)),
+                 vk::VertexInputAttributeDescription{}
+                     .setBinding(0)
+                     .setLocation(3)
+                     .setFormat(vk::Format::eR32G32B32A32Sint)
+                     .setOffset(offsetof(AnimatedVertex, bone_ids)),
+                 vk::VertexInputAttributeDescription{}
+                     .setBinding(0)
+                     .setLocation(4)
+                     .setFormat(vk::Format::eR32G32B32A32Sfloat)
+                     .setOffset(offsetof(AnimatedVertex, bone_weights))};
+
+  const auto vertex_input_state_info =
+      vk::PipelineVertexInputStateCreateInfo{}
+          .setFlags(vk::PipelineVertexInputStateCreateFlags())
+          .setVertexBindingDescriptions(vertex_bindings)
+          .setVertexAttributeDescriptions(vertex_attributes);
+
+  const auto input_assembly_state_info =
+      vk::PipelineInputAssemblyStateCreateInfo{}
+          .setFlags(vk::PipelineInputAssemblyStateCreateFlags())
+          .setPrimitiveRestartEnable(vk::False)
+          .setTopology(vk::PrimitiveTopology::eTriangleList);
+
+  const auto initial_viewport =
+      vk::Viewport{}
+          .setX(0.0f)
+          .setY(0.0f)
+          .setWidth(static_cast<float>(
+              RendererImpl::instance().mainpass.extent.width))
+          .setHeight(static_cast<float>(
+              RendererImpl::instance().mainpass.extent.height))
+          .setMinDepth(0.0f)
+          .setMaxDepth(1.0f);
+
+  const auto initial_scissor =
+      vk::Rect2D{}.setOffset(vk::Offset2D{}.setX(0.0f).setY(0.0f));
+
+  const auto viewport_state_info =
+      vk::PipelineViewportStateCreateInfo{}
+          .setFlags(vk::PipelineViewportStateCreateFlags())
+          .setViewports(initial_viewport)
+          .setScissors(initial_scissor);
+
+  const auto rasterization_state_info =
+      vk::PipelineRasterizationStateCreateInfo{}
+          .setFlags(vk::PipelineRasterizationStateCreateFlags())
+          .setDepthClampEnable(false)
+          .setRasterizerDiscardEnable(false)
+          .setPolygonMode(vk::PolygonMode::eFill)
+          .setCullMode(vk::CullModeFlagBits::eBack)
+          .setFrontFace(vk::FrontFace::eCounterClockwise)
+          .setDepthBiasEnable(false)
+          .setDepthBiasConstantFactor(0.0f)
+          .setDepthBiasClamp(0.0f)
+          .setDepthBiasSlopeFactor(0.0f)
+          .setLineWidth(1.0f);
+
+  auto multisample_state_info =
+      vk::PipelineMultisampleStateCreateInfo{}
+          .setFlags(vk::PipelineMultisampleStateCreateFlags())
+          .setSampleShadingEnable(false)
+          .setRasterizationSamples(vk::SampleCountFlagBits::e1);
+
+  const auto color_component_flags =
+      vk::ColorComponentFlagBits::eR | vk::ColorComponentFlagBits::eG |
+      vk::ColorComponentFlagBits::eB | vk::ColorComponentFlagBits::eA;
+
+  auto color_blend_attachment_state =
+      vk::PipelineColorBlendAttachmentState{}
+          .setBlendEnable(false)
+          .setSrcColorBlendFactor(vk::BlendFactor::eOne)
+          .setDstColorBlendFactor(vk::BlendFactor::eZero)
+          .setColorBlendOp(vk::BlendOp::eAdd)
+          .setSrcAlphaBlendFactor(vk::BlendFactor::eOne)
+          .setDstAlphaBlendFactor(vk::BlendFactor::eZero)
+          .setAlphaBlendOp(vk::BlendOp::eAdd)
+          .setColorWriteMask(color_component_flags);
+
+  auto color_blend_state_info =
+      vk::PipelineColorBlendStateCreateInfo{}
+          .setFlags(vk::PipelineColorBlendStateCreateFlags())
+          .setLogicOpEnable(false)
+          .setLogicOp(vk::LogicOp::eNoOp)
+          .setAttachments(color_blend_attachment_state)
+          .setBlendConstants({1.0f, 1.0f, 1.0f, 1.0f});
+
+  const auto modelinfo_bindings = std::array{
+      vk::DescriptorSetLayoutBinding{}
+          .setStageFlags(vk::ShaderStageFlagBits::eVertex |
+                         vk::ShaderStageFlagBits::eFragment)
+          .setDescriptorType(vk::DescriptorType::eUniformBufferDynamic)
+          .setBinding(0)
+          .setDescriptorCount(1),
+  };
+
+  const auto modelinfo_layout_info =
+      vk::DescriptorSetLayoutCreateInfo{}
+          .setFlags(vk::DescriptorSetLayoutCreateFlags())
+          .setBindings(modelinfo_bindings);
+
+  RendererImpl::instance().pipe.animation.modelinfo_layout =
+      ContextImpl::device().createDescriptorSetLayoutUnique(
+          modelinfo_layout_info, nullptr);
+
+  const auto diffuse_bindings = std::array{
+      vk::DescriptorSetLayoutBinding{}
+          .setStageFlags(vk::ShaderStageFlagBits::eFragment)
+          .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+          .setBinding(0)
+          .setDescriptorCount(1),
+  };
+
+  const auto diffuse_layout_info =
+      vk::DescriptorSetLayoutCreateInfo{}
+          .setFlags(vk::DescriptorSetLayoutCreateFlags())
+          .setBindings(diffuse_bindings);
+
+  RendererImpl::instance().pipe.animation.diffuse_layout =
+      ContextImpl::device().createDescriptorSetLayoutUnique(diffuse_layout_info,
+                                                            nullptr);
+
+  const auto set_layouts =
+      std::array{RendererImpl::instance().pipe.animation.modelinfo_layout.get(),
+                 RendererImpl::instance().pipe.animation.diffuse_layout.get()};
+
+  const auto layout_info = vk::PipelineLayoutCreateInfo{}
+                               .setFlags(vk::PipelineLayoutCreateFlags())
+                               .setSetLayouts(set_layouts);
+
+  RendererImpl::instance().pipe.animation.layout =
+      ContextImpl::device().createPipelineLayoutUnique(layout_info, nullptr);
+
+  auto depth_stencil_state_info = vk::PipelineDepthStencilStateCreateInfo{}
+                                      .setDepthTestEnable(true)
+                                      .setDepthWriteEnable(true)
+                                      .setDepthCompareOp(vk::CompareOp::eLess)
+                                      .setDepthBoundsTestEnable(false)
+                                      .setMinDepthBounds(0.0f)
+                                      .setMaxDepthBounds(1.0f)
+                                      .setStencilTestEnable(false);
+
+  auto pipeline_info =
+      vk::GraphicsPipelineCreateInfo{}
+          .setFlags(vk::PipelineCreateFlags())
+          .setStages(shaderstage_infos)
+          .setPVertexInputState(&vertex_input_state_info)
+          .setPInputAssemblyState(&input_assembly_state_info)
+          .setPTessellationState(nullptr)
+          .setPViewportState(&viewport_state_info)
+          .setPRasterizationState(&rasterization_state_info)
+          .setPMultisampleState(&multisample_state_info)
+          .setPDepthStencilState(&depth_stencil_state_info)
+          .setPColorBlendState(&color_blend_state_info)
+          .setPDynamicState(&dynamic_state_info)
+          .setLayout(RendererImpl::instance().pipe.animation.layout.get())
+          .setRenderPass(RendererImpl::instance().mainpass.renderpass.get());
+
+  auto result = ContextImpl::device().createGraphicsPipelineUnique(
+      nullptr, pipeline_info);
+
+  if (result.result != vk::Result::eSuccess) {
+    LOG_ERROR("Could not create graphics pipeline");
+    return false;
+  }
+
+  RendererImpl::instance().pipe.animation.pipeline = std::move(result.value);
+  return true;
+}
+
+auto initialize_animation_sets() -> bool {
+  RendererImpl::instance().pipe.animation.modelinfo_sets.resize(2);
+  std::vector<vk::WriteDescriptorSet> writes;
+  for (std::size_t i = 0; i < frames_in_flight; i++) {
+    const auto alloc_info =
+        vk::DescriptorSetAllocateInfo{}
+            .setDescriptorSetCount(1)
+            .setSetLayouts(
+                RendererImpl::instance().pipe.animation.modelinfo_layout.get())
+            .setDescriptorPool(RendererImpl::instance().pipe.pool.get());
+
+    RendererImpl::instance().pipe.animation.modelinfo_sets[i] =
+        ContextImpl::device().allocateDescriptorSets(alloc_info).front();
+
+    const auto buffer_info =
+        vk::DescriptorBufferInfo{}
+            .setBuffer(RendererImpl::instance().uniform_arenas[i].buffer())
+            .setRange(sizeof(AnimatedUniform))
+            .setOffset(0);
+
+    const auto write =
+        vk::WriteDescriptorSet{}
+            .setDescriptorType(vk::DescriptorType::eUniformBufferDynamic)
+            .setDstSet(
+                RendererImpl::instance().pipe.animation.modelinfo_sets[i])
             .setDstBinding(0)
             .setDescriptorCount(1)
             .setBufferInfo(buffer_info);
@@ -1100,6 +1363,14 @@ auto Renderer::initialize(const InitializeConfig &config) -> bool {
     return false;
   }
 
+  if (!initialize_animation_pipe()) {
+    return false;
+  }
+
+  if (!initialize_animation_sets()) {
+    return false;
+  }
+
   if (!initialize_frames()) {
     return false;
   }
@@ -1174,6 +1445,9 @@ auto Renderer::begin_frame() -> void {
   RendererImpl::instance()
       .frames[RendererImpl::instance().flightframe]
       .texture_diffuse_sets.reset();
+  RendererImpl::instance()
+      .frames[RendererImpl::instance().flightframe]
+      .animation_diffuse_sets.reset();
   ContextImpl::device().resetDescriptorPool(
       RendererImpl::instance()
           .frames[RendererImpl::instance().flightframe]
@@ -1395,6 +1669,7 @@ auto Renderer::end_frame() -> void {
 
       if (diffuse_set == nullptr) {
         LOG_ERROR("Not possible to make a descriptorset for diffuse");
+        continue;
       }
 
       {
@@ -1468,6 +1743,176 @@ auto Renderer::end_frame() -> void {
         const auto sets = std::array{
             RendererImpl::instance()
                 .pipe.texture
+                .modelinfo_sets[RendererImpl::instance().flightframe]};
+        const auto dynamic_offsets =
+            std::array{static_cast<std::uint32_t>(allocation->dynamic_offset)};
+
+        commandbuffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics, layout, first_set,
+            static_cast<std::uint32_t>(sets.size()), sets.data(),
+            static_cast<std::uint32_t>(dynamic_offsets.size()),
+            dynamic_offsets.data());
+      }
+
+      commandbuffer.drawIndexed(mesh->indices_count, 1, 0, 0, 0);
+    }
+
+    commandbuffer.bindPipeline(
+        vk::PipelineBindPoint::eGraphics,
+        RendererImpl::instance().pipe.animation.pipeline.get());
+
+    auto &drawanimation = RendererImpl::instance()
+                              .frames[RendererImpl::instance().flightframe]
+                              .drawanimation;
+    for (auto &command : drawanimation) {
+      auto *mesh = ResourcesImpl::instance().get(command.mesh);
+      if (!mesh) {
+
+        LOG_ERROR("Got invalid mesh in draw commands");
+        continue;
+      }
+
+      auto *diffuse = ResourcesImpl::instance().get(command.diffuse);
+      if (!diffuse) {
+
+        LOG_ERROR("Got invalid diffuse in draw commands");
+        continue;
+      }
+
+      const auto key =
+          hash_combine({command.diffuse.index(), command.diffuse.generation()});
+
+      auto *diffuse_set = RendererImpl::instance()
+                              .frames[RendererImpl::instance().flightframe]
+                              .animation_diffuse_sets.find(key);
+      if (diffuse_set == nullptr) {
+        const auto allocate_info =
+            vk::DescriptorSetAllocateInfo{}
+                .setDescriptorPool(
+                    RendererImpl::instance()
+                        .frames[RendererImpl::instance().flightframe]
+                        .diffuse_pool.get())
+                .setDescriptorSetCount(1)
+                .setSetLayouts(RendererImpl::instance()
+                                   .pipe.animation.diffuse_layout.get());
+
+        auto allocated =
+            ContextImpl::device().allocateDescriptorSets(allocate_info);
+
+        if (!diffuse->texture.sampler().has_value()) {
+          diffuse->texture.make_sampler();
+        }
+
+        const auto image_info =
+            vk::DescriptorImageInfo{}
+                .setImageLayout(vk::ImageLayout::eShaderReadOnlyOptimal)
+                .setSampler(diffuse->texture.sampler().value())
+                .setImageView(diffuse->texture.view());
+
+        const std::array<vk::WriteDescriptorSet, 1> writes{
+            vk::WriteDescriptorSet{}
+                .setDstBinding(0)
+                .setDstArrayElement(0)
+                .setDstSet(allocated[0])
+                .setDescriptorCount(1)
+                .setDescriptorType(vk::DescriptorType::eCombinedImageSampler)
+                .setImageInfo(image_info)};
+
+        ContextImpl::device().updateDescriptorSets(writes.size(), writes.data(),
+                                                   0, nullptr);
+
+        RendererImpl::instance()
+            .frames[RendererImpl::instance().flightframe]
+            .animation_diffuse_sets.insert(key, allocated[0]);
+        diffuse_set = RendererImpl::instance()
+                          .frames[RendererImpl::instance().flightframe]
+                          .animation_diffuse_sets.find(key);
+      }
+
+      if (diffuse_set == nullptr) {
+        LOG_ERROR("Not possible to make a descriptorset for diffuse");
+        continue;
+      }
+
+      {
+        const auto layout =
+            RendererImpl::instance().pipe.animation.layout.get();
+        const auto first_set = std::uint32_t{1};
+        const auto sets = std::array{*diffuse_set};
+        commandbuffer.bindDescriptorSets(
+            vk::PipelineBindPoint::eGraphics, layout, first_set,
+            static_cast<std::uint32_t>(sets.size()), sets.data(), 0, nullptr);
+      }
+
+      {
+        std::vector<vk::DeviceSize> offsets = {0};
+        std::vector<vk::Buffer> buffers = {mesh->vertices.buffer()};
+        commandbuffer.bindVertexBuffers(0, 1, buffers.data(), offsets.data());
+      }
+
+      {
+        vk::DeviceSize offset = 0;
+        vk::Buffer buffer = mesh->indices.buffer();
+        commandbuffer.bindIndexBuffer(buffer, offset, vk::IndexType::eUint32);
+      }
+
+      {
+        auto uniform = AnimatedUniform{};
+        uniform.model = command.location;
+        uniform.view = view_matrix();
+        uniform.projection = projection_matrix();
+
+        auto &hemisphere_lights =
+            RendererImpl::instance()
+                .frames[RendererImpl::instance().flightframe]
+                .hemisphere_lights;
+
+        if (!hemisphere_lights.empty()) {
+          uniform.hemisphere_light = to_uniform(hemisphere_lights[0]);
+        }
+
+        auto &directional_lights =
+            RendererImpl::instance()
+                .frames[RendererImpl::instance().flightframe]
+                .directional_lights;
+
+        if (!directional_lights.empty()) {
+          uniform.directional_light = to_uniform(directional_lights[0]);
+        }
+
+        auto &point_lights = RendererImpl::instance()
+                                 .frames[RendererImpl::instance().flightframe]
+                                 .point_lights;
+
+        const auto point_lights_size =
+            std::min(point_lights.size(), std::size_t{4});
+        for (std::size_t i = 0; i < point_lights_size; i++) {
+          uniform.point_lights[i] = to_uniform(point_lights[i]);
+        }
+
+        for (std::size_t curr_bone = 0;
+             curr_bone <
+             std::min(max_animation_bones, command.bone_matrices.size());
+             curr_bone++) {
+          uniform.animation_bones[curr_bone] = command.bone_matrices[curr_bone];
+        }
+
+        auto allocation =
+            RendererImpl::instance()
+                .uniform_arenas[RendererImpl::instance().flightframe]
+                .allocate(sizeof(uniform));
+        if (!allocation.has_value()) {
+          LOG_ERROR("Ran out of uniform arena memory");
+          continue;
+        }
+
+        std::memcpy(allocation->ptr, &uniform, sizeof(uniform));
+
+        const auto layout = RendererImpl::instance().pipe.animation.layout.get();
+        const auto first_set = std::uint32_t{0};
+        const auto sets = std::array{
+            RendererImpl::instance()
+                .pipe.animation
                 .modelinfo_sets[RendererImpl::instance().flightframe]};
         const auto dynamic_offsets =
             std::array{static_cast<std::uint32_t>(allocation->dynamic_offset)};
@@ -1690,10 +2135,12 @@ auto Renderer::draw_textured(glm::mat4 location, MeshRef mesh,
 
 auto Renderer::draw_animated(glm::mat4 location, AnimatedMeshRef mesh,
                              TextureRef texture,
-                             animation::Animation &animation) -> void {
+                             std::span<const glm::mat4> bone_matrices) -> void {
   RendererImpl::instance()
       .frames[RendererImpl::instance().flightframe]
-      .drawanimation.emplace_back(location, mesh, texture, &animation);
+      .drawanimation.emplace_back(location, mesh, texture,
+                                  bone_matrices |
+                                      std::ranges::to<std::vector>());
 }
 
 auto Renderer::add_light(HemisphereLight light) -> void {

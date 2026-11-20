@@ -68,7 +68,7 @@ struct Position {
 };
 
 struct Rotation {
-  glm::quat orientation{0.0f, 0.0f, 0.0f, 1.0f};
+  glm::quat orientation{1.0f, 0.0f, 0.0f, 0.0f};
   double timeStamp{0};
 };
 

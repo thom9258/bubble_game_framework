@@ -31,7 +31,7 @@ struct DrawAnimation {
   glm::mat4 location;
   AnimatedMeshRef mesh;
   TextureRef diffuse;
-  animation::Animation* animation;
+  std::vector<glm::mat4> bone_matrices;
 };
 
 
@@ -136,6 +136,14 @@ public:
     } texture;
 
     struct {
+      vk::UniquePipelineLayout layout;
+      vk::UniquePipeline pipeline;
+      vk::UniqueDescriptorSetLayout modelinfo_layout;
+      vk::UniqueDescriptorSetLayout diffuse_layout;
+      std::vector<vk::DescriptorSet> modelinfo_sets;
+    } animation;
+
+    struct {
       vk::UniqueDescriptorPool pool;
       float ui_scale{1.0f};
     } imgui;
@@ -144,6 +152,7 @@ public:
 
   struct Frame {
     FlatSortedSet<vk::DescriptorSet> texture_diffuse_sets;
+    FlatSortedSet<vk::DescriptorSet> animation_diffuse_sets;
     vk::UniqueDescriptorPool diffuse_pool;
     std::vector<DrawFlatColor> drawflatcolor;
     std::vector<DrawTexture> drawtexture;

@@ -5,6 +5,7 @@
 #include "generational_array.hpp"
 #include "gpu_buffer.hpp"
 #include "texture.hpp"
+#include "stb.hpp"
 
 namespace bubble {
 

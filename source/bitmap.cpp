@@ -1,22 +1,8 @@
 #include <bubble/bitmap.hpp>
+
+#include "stb.hpp"
+
 #include <cstdint>
-
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wsign-conversion"
-#pragma GCC diagnostic ignored "-Wconversion"
-#endif
-
-#define STB_IMAGE_IMPLEMENTATION
-#define STBI_ONLY_PNG
-#define STBI_ONLY_JPEG
-#define STBI_FAILURE_USERMSG
-#include <stb_image.h>
-
-#if defined(__GNUC__) || defined(__clang__)
-#pragma GCC diagnostic pop
-#endif
-
 #include <cstring>
 #include <filesystem>
 #include <memory>
