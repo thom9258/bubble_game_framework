@@ -4,6 +4,7 @@
 #include <print>
 #include <ranges>
 #include <utility>
+#include <vulkan/vulkan_enums.hpp>
 
 #if defined(_MSC_VER)
 #include <direct.h>
@@ -18,7 +19,14 @@ static std::unique_ptr<ContextImpl> g_instance{nullptr};
 
 auto ContextImpl::instance() -> ContextImpl & { return *g_instance; }
 
-auto Context::destroy() -> void { g_instance.reset(); }
+auto Context::destroy() -> void {
+  if (g_instance == nullptr) {
+    return;
+  }
+
+  ContextImpl::device().waitIdle();
+  g_instance.reset();
+}
 
 auto stringify(LogType type) {
   switch (type) {
@@ -46,18 +54,20 @@ auto default_log_callback(LogType type, std::string_view msg) -> void {
   std::println("[{}] {}", stringify(type), msg);
 }
 
-auto GlobalContext::create() -> std::optional<GlobalContext> {
+auto GlobalContext::create() -> std::unique_ptr<GlobalContext> {
   if (SDL_Init(SDL_INIT_VIDEO) < 0) {
     LOG_ERROR("Could not init SDL, error {}", SDL_GetError());
-    return std::nullopt;
+    return nullptr;
   }
 
   if (SDL_Vulkan_LoadLibrary(nullptr) < 0) {
     LOG_ERROR("Could not load SDL Vulkan, error {}", SDL_GetError());
-    return std::nullopt;
+    SDL_Quit();
+    return nullptr;
   }
 
-  return GlobalContext{};
+  // make_unique can't reach the private constructor; plain new can, from here.
+  return std::unique_ptr<GlobalContext>(new GlobalContext());
 }
 
 GlobalContext::~GlobalContext() {
@@ -66,15 +76,38 @@ GlobalContext::~GlobalContext() {
 }
 
 auto initialize_window(const InitializeConfig &config) -> bool {
-  constexpr auto pos_x = int{0};
-  constexpr auto pos_y = int{0};
-  constexpr auto flags = 0 | SDL_WINDOW_VULKAN | SDL_WINDOW_ALLOW_HIGHDPI;
+  constexpr auto pos_x = int{SDL_WINDOWPOS_CENTERED};
+  constexpr auto pos_y = int{SDL_WINDOWPOS_CENTERED};
+  constexpr auto flags = 0 | SDL_WINDOW_VULKAN | SDL_WINDOW_SHOWN;
+  auto width = config.width;
+  auto height = config.height;
 
-  ContextImpl::instance().window = SDLWindowPtr{SDL_CreateWindow(
-      config.name.data(), pos_x, pos_y, config.width, config.height, flags)};
+  auto bounds = SDL_Rect{};
+  if (SDL_GetDisplayUsableBounds(0, &bounds) == 0) {
+    width = std::min(width, bounds.w);
+    height = std::min(height, bounds.h);
+
+  } else {
+    LOG_WARN("Could not get display bounds for window: '{}'", SDL_GetError());
+  }
+
+  ContextImpl::instance().window = SDLWindowPtr{
+      SDL_CreateWindow(config.name.data(), pos_x, pos_y, width, height, flags)};
 
   if (ContextImpl::instance().window == nullptr) {
+    LOG_ERROR("Could not create window: '{}'", SDL_GetError());
     return false;
+  }
+
+  {
+    auto drawable_width = int{0};
+    auto drawable_height = int{0};
+    SDL_Vulkan_GetDrawableSize(ContextImpl::instance().window.get(),
+                               &drawable_width, &drawable_height);
+
+    ContextImpl::instance().window_extent =
+        vk::Extent2D{static_cast<std::uint32_t>(drawable_width),
+                     static_cast<std::uint32_t>(drawable_height)};
   }
 
   return true;
@@ -92,16 +125,26 @@ auto window_instance_extensions() -> std::vector<const char *> {
 
 auto initialize_vulkan_instance(const InitializeConfig &config) -> bool {
   auto instance_extensions = window_instance_extensions();
-  instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  if (config.options.enable_graphics_validation) {
+    instance_extensions.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
+    instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+  }
 
   LOG_INFO("Enabled instance extensions:");
   for (auto extension : instance_extensions) {
     LOG_INFO("  {}", extension);
   }
 
-  auto validation_layers = std::vector<const char *>{
+  const auto validation_layers = std::array{
       "VK_LAYER_KHRONOS_validation",
   };
+
+  const auto validation_features =
+      std::array{vk::ValidationFeatureEnableEXT::eSynchronizationValidation};
+
+  const auto validation_feature_extensions =
+      vk::ValidationFeaturesEXT{}.setEnabledValidationFeatures(
+          validation_features);
 
   const auto applicationInfo =
       vk::ApplicationInfo{}
@@ -114,17 +157,25 @@ auto initialize_vulkan_instance(const InitializeConfig &config) -> bool {
   auto instanceCreateInfo =
       vk::InstanceCreateInfo{}
           .setPApplicationInfo(&applicationInfo)
-          .setEnabledExtensionCount(instance_extensions.size())
+          .setEnabledExtensionCount(
+              static_cast<std::uint32_t>(instance_extensions.size()))
           .setPpEnabledExtensionNames(instance_extensions.data());
 
   if (config.options.enable_graphics_validation) {
-    instanceCreateInfo.setEnabledLayerCount(validation_layers.size());
+    instanceCreateInfo.setEnabledLayerCount(
+        static_cast<std::uint32_t>(validation_layers.size()));
     instanceCreateInfo.setPpEnabledLayerNames(validation_layers.data());
+    instanceCreateInfo.setPNext(&validation_feature_extensions);
   }
 
   LOG_INFO("Enabled validation layers:");
   for (auto layer : validation_layers) {
     LOG_INFO("  {}", layer);
+  }
+
+  LOG_INFO("Enabled validation features:");
+  for (auto feature : validation_features) {
+    LOG_INFO("  {}", vk::to_string(feature));
   }
 
   ContextImpl::instance().vkinstance =
@@ -144,7 +195,8 @@ auto get_queue_family(vk::PhysicalDevice device, vk::SurfaceKHR surface)
         static_cast<bool>(family.queueFlags & vk::QueueFlagBits::eTransfer);
     bool const has_compute =
         static_cast<bool>(family.queueFlags & vk::QueueFlagBits::eCompute);
-    bool const has_present = device.getSurfaceSupportKHR(i, surface);
+    bool const has_present =
+        device.getSurfaceSupportKHR(static_cast<std::uint32_t>(i), surface);
 
     if (has_graphics && has_transfer && has_compute && has_present) {
       return static_cast<std::uint32_t>(i);
@@ -263,11 +315,11 @@ auto initialize_physical_device() -> bool {
   LOG_INFO("Physical Device Count: {}", physical_device_count);
   for (auto [i, physical_device] : physical_devices | std::views::enumerate) {
     log_physical_device(physical_device);
-    scores[i] = rate_physical_device(physical_device,
-                                     ContextImpl::instance().surface.get());
+    scores[static_cast<std::uint32_t>(i)] = rate_physical_device(
+        physical_device, ContextImpl::instance().surface.get());
   }
 
-  std::uint32_t best_score{0};
+  auto best_score = std::size_t{0};
   LOG_INFO("Physical Device Scores:");
   for (auto [device, score] : std::views::zip(physical_devices, scores)) {
     if (!score.has_value())
@@ -392,7 +444,7 @@ auto Context::initialize(const InitializeConfig &config) -> bool {
   g_instance.reset(new ContextImpl);
 
   ContextImpl::instance().globalcontext = GlobalContext::create();
-  if (!ContextImpl::instance().globalcontext.has_value()) {
+  if (ContextImpl::instance().globalcontext == nullptr) {
     return false;
   }
 

@@ -34,8 +34,6 @@ struct DrawAnimation {
   std::vector<glm::mat4> bone_matrices;
 };
 
-
-
 struct FlatColorUniform {
   glm::mat4 model;
   glm::mat4 view;
@@ -94,12 +92,15 @@ public:
   std::optional<double> deltatime;
   Color clearcolor{255, 0, 0, 255};
   Camera camera{glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f)};
+  bool swapchain_dirty{false};
+  bool frame_acquired{false};
 
   std::vector<TaskGraph> rendergraphs;
   std::vector<UniformArena> uniform_arenas;
 
   vk::SurfaceFormatKHR swapchain_format;
   vk::UniqueSwapchainKHR swapchain;
+  vk::Extent2D swapchain_extent;
   std::vector<vk::Image> swapchain_images;
   std::vector<vk::UniqueImageView> swapchain_imageviews;
   std::vector<vk::UniqueSemaphore> render_finished;

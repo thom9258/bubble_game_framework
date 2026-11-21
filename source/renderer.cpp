@@ -90,6 +90,40 @@ auto initialize_uniform_arenas() -> bool {
   return true;
 }
 
+[[nodiscard]]
+auto choose_present_mode(PresentationMode wanted) -> vk::PresentModeKHR {
+  const auto available =
+      ContextImpl::physical_device().getSurfacePresentModesKHR(
+          ContextImpl::instance().surface.get());
+  const auto supports = [&](vk::PresentModeKHR mode) {
+    return std::ranges::find(available, mode) != available.end();
+  };
+
+  const auto preference = std::invoke([&]() -> std::vector<vk::PresentModeKHR> {
+    switch (wanted) {
+    case PresentationMode::VSync:
+      return {vk::PresentModeKHR::eFifo};
+    case PresentationMode::Uncapped:
+      return {vk::PresentModeKHR::eImmediate, vk::PresentModeKHR::eMailbox,
+              vk::PresentModeKHR::eFifo};
+    case PresentationMode::LowLatency:
+      return {vk::PresentModeKHR::eMailbox, vk::PresentModeKHR::eFifo};
+    }
+    return {vk::PresentModeKHR::eFifo};
+  });
+
+  for (const auto mode : preference) {
+    if (supports(mode)) {
+      if (mode != preference.front()) {
+        LOG_WARN("Present mode {} not available, using {}",
+                 vk::to_string(preference.front()), vk::to_string(mode));
+      }
+      return mode;
+    }
+  }
+  return vk::PresentModeKHR::eFifo; // the spec guarantees FIFO
+}
+
 auto initialize_swapchain(const InitializeConfig &config) -> bool {
   vk::SurfaceCapabilitiesKHR window_capabilities =
       ContextImpl::physical_device().getSurfaceCapabilitiesKHR(
@@ -100,6 +134,17 @@ auto initialize_swapchain(const InitializeConfig &config) -> bool {
     LOG_ERROR("Provided window surface has a undefined size!");
     return false;
   }
+
+  auto extent = window_capabilities.currentExtent;
+  if (extent.width == std::numeric_limits<std::uint32_t>::max()) {
+    extent.width = std::clamp(ContextImpl::instance().window_extent.width,
+                              window_capabilities.minImageExtent.width,
+                              window_capabilities.maxImageExtent.width);
+    extent.height = std::clamp(ContextImpl::instance().window_extent.height,
+                               window_capabilities.minImageExtent.height,
+                               window_capabilities.maxImageExtent.height);
+  }
+  RendererImpl::instance().swapchain_extent = extent;
 
   std::uint32_t surface_format_count{0};
   vk::Result result = ContextImpl::physical_device().getSurfaceFormatsKHR(
@@ -123,9 +168,8 @@ auto initialize_swapchain(const InitializeConfig &config) -> bool {
   RendererImpl::instance().swapchain_format =
       get_best_swapchain_surface_format(available_surface_formats);
 
-  vk::PresentModeKHR const present_mode = (config.options.enable_vsync)
-                                              ? vk::PresentModeKHR::eFifo
-                                              : vk::PresentModeKHR::eImmediate;
+  const auto present_mode =
+      choose_present_mode(config.options.presentation_mode);
 
   const auto supports_identity =
       static_cast<bool>(window_capabilities.supportedTransforms &
@@ -165,10 +209,7 @@ auto initialize_swapchain(const InitializeConfig &config) -> bool {
           .setImageFormat(RendererImpl::instance().swapchain_format.format)
           .setImageColorSpace(
               RendererImpl::instance().swapchain_format.colorSpace)
-          .setImageExtent(
-              vk::Extent2D{}
-                  .setWidth(static_cast<std::uint32_t>(config.width))
-                  .setHeight(static_cast<std::uint32_t>(config.height)))
+          .setImageExtent(RendererImpl::instance().swapchain_extent)
           .setImageArrayLayers(1)
           .setImageUsage(vk::ImageUsageFlagBits::eColorAttachment |
                          vk::ImageUsageFlagBits::eTransferSrc |
@@ -304,9 +345,7 @@ auto initialize_descriptorpool() -> bool {
 
 auto initialize_mainpass_attachments(const InitializeConfig &config) -> bool {
   RendererImpl::instance().mainpass.extent =
-      vk::Extent2D{}
-          .setWidth(static_cast<std::uint32_t>(config.width))
-          .setHeight(static_cast<std::uint32_t>(config.height));
+      ContextImpl::instance().window_extent;
 
   for (std::size_t i = 0; i < frames_in_flight; i++) {
     const auto color_usage = vk::ImageUsageFlagBits::eTransferDst |
@@ -615,6 +654,8 @@ auto initialize_flatcolor_pipe() -> bool {
 
 auto initialize_flatcolor_sets() -> bool {
   RendererImpl::instance().pipe.flatcolor.modelinfo_sets.resize(2);
+  std::vector<vk::DescriptorBufferInfo> buffer_infos;
+  buffer_infos.reserve(frames_in_flight);
   std::vector<vk::WriteDescriptorSet> writes;
   for (std::size_t i = 0; i < frames_in_flight; i++) {
     const auto alloc_info =
@@ -628,11 +669,11 @@ auto initialize_flatcolor_sets() -> bool {
     RendererImpl::instance().pipe.flatcolor.modelinfo_sets[i] =
         ContextImpl::device().allocateDescriptorSets(alloc_info).front();
 
-    const auto buffer_info =
+    buffer_infos.push_back(
         vk::DescriptorBufferInfo{}
             .setBuffer(RendererImpl::instance().uniform_arenas[i].buffer())
             .setRange(sizeof(FlatColorUniform))
-            .setOffset(0);
+            .setOffset(0));
 
     const auto write =
         vk::WriteDescriptorSet{}
@@ -641,7 +682,7 @@ auto initialize_flatcolor_sets() -> bool {
                 RendererImpl::instance().pipe.flatcolor.modelinfo_sets[i])
             .setDstBinding(0)
             .setDescriptorCount(1)
-            .setBufferInfo(buffer_info);
+            .setBufferInfo(buffer_infos.back());
 
     writes.push_back(write);
   }
@@ -868,6 +909,9 @@ auto initialize_texture_pipe() -> bool {
 
 auto initialize_texture_sets() -> bool {
   RendererImpl::instance().pipe.texture.modelinfo_sets.resize(2);
+
+  std::vector<vk::DescriptorBufferInfo> buffer_infos;
+  buffer_infos.reserve(frames_in_flight);
   std::vector<vk::WriteDescriptorSet> writes;
   for (std::size_t i = 0; i < frames_in_flight; i++) {
     const auto alloc_info =
@@ -880,11 +924,11 @@ auto initialize_texture_sets() -> bool {
     RendererImpl::instance().pipe.texture.modelinfo_sets[i] =
         ContextImpl::device().allocateDescriptorSets(alloc_info).front();
 
-    const auto buffer_info =
+    buffer_infos.push_back(
         vk::DescriptorBufferInfo{}
             .setBuffer(RendererImpl::instance().uniform_arenas[i].buffer())
             .setRange(sizeof(TextureUniform))
-            .setOffset(0);
+            .setOffset(0));
 
     const auto write =
         vk::WriteDescriptorSet{}
@@ -892,7 +936,7 @@ auto initialize_texture_sets() -> bool {
             .setDstSet(RendererImpl::instance().pipe.texture.modelinfo_sets[i])
             .setDstBinding(0)
             .setDescriptorCount(1)
-            .setBufferInfo(buffer_info);
+            .setBufferInfo(buffer_infos.back());
 
     writes.push_back(write);
   }
@@ -1129,6 +1173,8 @@ auto initialize_animation_pipe() -> bool {
 
 auto initialize_animation_sets() -> bool {
   RendererImpl::instance().pipe.animation.modelinfo_sets.resize(2);
+  std::vector<vk::DescriptorBufferInfo> buffer_infos;
+  buffer_infos.reserve(frames_in_flight);
   std::vector<vk::WriteDescriptorSet> writes;
   for (std::size_t i = 0; i < frames_in_flight; i++) {
     const auto alloc_info =
@@ -1141,11 +1187,11 @@ auto initialize_animation_sets() -> bool {
     RendererImpl::instance().pipe.animation.modelinfo_sets[i] =
         ContextImpl::device().allocateDescriptorSets(alloc_info).front();
 
-    const auto buffer_info =
+    buffer_infos.push_back(
         vk::DescriptorBufferInfo{}
             .setBuffer(RendererImpl::instance().uniform_arenas[i].buffer())
             .setRange(sizeof(AnimatedUniform))
-            .setOffset(0);
+            .setOffset(0));
 
     const auto write =
         vk::WriteDescriptorSet{}
@@ -1154,7 +1200,7 @@ auto initialize_animation_sets() -> bool {
                 RendererImpl::instance().pipe.animation.modelinfo_sets[i])
             .setDstBinding(0)
             .setDescriptorCount(1)
-            .setBufferInfo(buffer_info);
+            .setBufferInfo(buffer_infos.back());
 
     writes.push_back(write);
   }
@@ -1299,6 +1345,11 @@ auto render_imgui(vk::CommandBuffer commandbuffer) -> void {
 }
 
 auto Renderer::destroy() -> void {
+  if (g_instance == nullptr) {
+    return;
+  }
+
+  ContextImpl::device().waitIdle();
   destroy_imgui();
   g_instance.reset();
 }
@@ -1382,40 +1433,67 @@ auto Renderer::initialize(const InitializeConfig &config) -> bool {
   return true;
 }
 
-auto wait_for_next_frame() -> void {
+enum class RenderFrame { Yes, No };
+
+[[nodiscard]]
+auto wait_for_next_frame() -> RenderFrame {
   const auto fences =
       std::array{RendererImpl::instance()
                      .in_flight[RendererImpl::instance().flightframe]
                      .get()};
-  const auto max_wait = std::numeric_limits<unsigned int>::max();
+  const auto max_wait = std::numeric_limits<std::uint64_t>::max();
   vk::Result wait_result =
       ContextImpl::device().waitForFences(fences, true, max_wait);
   if (wait_result != vk::Result::eSuccess) {
     LOG_ERROR("Could not wait for swapchain");
+    return RenderFrame::No;
   }
 
-  ContextImpl::device().resetFences(fences);
-  const auto max_acquire_wait = std::numeric_limits<uint64_t>::max();
-  auto result = ContextImpl::device().acquireNextImageKHR(
-      RendererImpl::instance().swapchain.get(), max_acquire_wait,
+  const auto no_timeout = std::numeric_limits<uint64_t>::max();
+  auto image_index = std::uint32_t{0};
+  const vk::Result result = ContextImpl::device().acquireNextImageKHR(
+      RendererImpl::instance().swapchain.get(), no_timeout,
       RendererImpl::instance()
           .image_available[RendererImpl::instance().flightframe]
           .get(),
-      nullptr);
+      nullptr, &image_index);
 
-  if (result.result != vk::Result::eSuccess) {
-    LOG_ERROR("Could not acquire next image from swapchain");
+  switch (result) {
+  case vk::Result::eSuccess:
+    break;
+  case vk::Result::eSuboptimalKHR:
+    // Image *was* acquired and the semaphore will signal: render this frame,
+    // recreate before the next one.
+    RendererImpl::instance().swapchain_dirty = true;
+    break;
+  case vk::Result::eErrorOutOfDateKHR:
+    // Nothing acquired, semaphore not signaled, fence untouched: just skip.
+    RendererImpl::instance().swapchain_dirty = true;
+    return RenderFrame::No;
+  default:
+    LOG_ERROR("acquireNextImageKHR failed: {}", vk::to_string(result));
+    return RenderFrame::No;
   }
 
-  RendererImpl::instance().image_index = result.value;
+  ContextImpl::device().resetFences(fences);
+  RendererImpl::instance().image_index = image_index;
+  return RenderFrame::Yes;
 }
 
 auto Renderer::begin_frame() -> void {
-  wait_for_next_frame();
+
+  if (RendererImpl::instance().swapchain_dirty) {
+    LOG_WARN("Swapchain was dirty, but resizing is not implemented yet");
+    RendererImpl::instance().swapchain_dirty = false;
+  }
+
+  RendererImpl::instance().frame_acquired =
+      wait_for_next_frame() == RenderFrame::Yes;
 
   ImGui_ImplVulkan_NewFrame();
   ImGui_ImplSDL2_NewFrame();
   ImGui::NewFrame();
+  process_events_imgui();
 
   const auto duration = RendererImpl::instance().deltatime_timer.stop();
 
@@ -1442,16 +1520,20 @@ auto Renderer::begin_frame() -> void {
   RendererImpl::instance()
       .frames[RendererImpl::instance().flightframe]
       .point_lights.clear();
-  RendererImpl::instance()
-      .frames[RendererImpl::instance().flightframe]
-      .texture_diffuse_sets.reset();
-  RendererImpl::instance()
-      .frames[RendererImpl::instance().flightframe]
-      .animation_diffuse_sets.reset();
-  ContextImpl::device().resetDescriptorPool(
-      RendererImpl::instance()
-          .frames[RendererImpl::instance().flightframe]
-          .diffuse_pool.get());
+
+  // Only reset gpu resources if the frame is ready to be used
+  if (RendererImpl::instance().frame_acquired) {
+    RendererImpl::instance()
+        .frames[RendererImpl::instance().flightframe]
+        .texture_diffuse_sets.reset();
+    RendererImpl::instance()
+        .frames[RendererImpl::instance().flightframe]
+        .animation_diffuse_sets.reset();
+    ContextImpl::device().resetDescriptorPool(
+        RendererImpl::instance()
+            .frames[RendererImpl::instance().flightframe]
+            .diffuse_pool.get());
+  }
 }
 
 auto view_matrix() -> glm::mat4 {
@@ -1472,8 +1554,10 @@ auto projection_matrix() -> glm::mat4 {
 }
 
 auto Renderer::end_frame() -> void {
-
-  process_events_imgui();
+  if (!RendererImpl::instance().frame_acquired) {
+    ImGui::EndFrame();
+    return;
+  }
 
   RendererImpl::instance()
       .uniform_arenas[RendererImpl::instance().flightframe]
@@ -1908,7 +1992,8 @@ auto Renderer::end_frame() -> void {
 
         std::memcpy(allocation->ptr, &uniform, sizeof(uniform));
 
-        const auto layout = RendererImpl::instance().pipe.animation.layout.get();
+        const auto layout =
+            RendererImpl::instance().pipe.animation.layout.get();
         const auto first_set = std::uint32_t{0};
         const auto sets = std::array{
             RendererImpl::instance()
@@ -2101,10 +2186,13 @@ auto Renderer::end_frame() -> void {
                                 .setSwapchains(swapchains)
                                 .setImageIndices(image_indices);
 
-  vk::Result present_result =
-      ContextImpl::instance().queue.presentKHR(present_info);
-  if (present_result != vk::Result::eSuccess) {
-    LOG_ERROR("could not present frame");
+  const auto present_result =
+      ContextImpl::instance().queue.presentKHR(&present_info);
+  if (present_result == vk::Result::eSuboptimalKHR ||
+      present_result == vk::Result::eErrorOutOfDateKHR) {
+    RendererImpl::instance().swapchain_dirty = true;
+  } else if (present_result != vk::Result::eSuccess) {
+    LOG_ERROR("presentKHR failed: {}", vk::to_string(present_result));
   }
 
   RendererImpl::instance().flightframe =

@@ -125,7 +125,15 @@ auto Resources::initialize(const InitializeConfig &) -> bool {
   return true;
 }
 
-auto Resources::destroy() -> void { m_instance.reset(); }
+auto Resources::destroy() -> void {
+  if (m_instance == nullptr) {
+    return;
+  }
+
+  ContextImpl::device().waitIdle();
+
+  m_instance.reset();
+}
 
 auto ResourcesImpl::get(MeshRef ref) -> MeshSource * {
   return mesh_sources.get(Ref(ref.index(), ref.generation()));

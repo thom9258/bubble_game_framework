@@ -1,3 +1,4 @@
+#include "bubble/initialize_config.hpp"
 #include <bubble/animation.hpp>
 #include <bubble/bitmap.hpp>
 #include <bubble/bubble.hpp>
@@ -25,11 +26,8 @@ int main(int argc, char **argv) {
   auto config = bubble::InitializeConfig{};
   config.height = 600;
   config.width = config.height * (4.0f / 3.0f);
-
-#if 0
   config.options.enable_graphics_validation = false;
-  config.options.enable_vsync = false;
-#endif
+  config.options.presentation_mode = bubble::PresentationMode::VSync;
 
   if (!bubble.initialize(config)) {
     return 1;
@@ -126,10 +124,10 @@ int main(int argc, char **argv) {
     }
     if (mouse.locked()) {
       const auto mouse_delta = mouse.move_delta();
-      const auto rotate_speed = 0.045f;
+      const auto rotate_speed = 0.0013f;
       const auto rotation = glm::vec2(static_cast<float>(mouse_delta.x),
                                       static_cast<float>(mouse_delta.y));
-      camera.rotate(rotation * rotate_speed * static_cast<float>(deltatime));
+      camera.rotate(rotation * rotate_speed);
     }
 
     button_focus.update();

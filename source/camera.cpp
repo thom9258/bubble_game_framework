@@ -43,7 +43,7 @@ auto Camera::forward() const -> glm::vec3 { return glm::normalize(_forward); }
 
 auto Camera::up() const -> glm::vec3 { return _up; }
 
-auto Camera::right() const -> glm::vec3 { return glm::normalize(glm::cross(up(), forward())); }
+auto Camera::right() const -> glm::vec3 { return glm::normalize(glm::cross(forward(), up())); }
 
 auto Camera::fov_y() const -> float { return _fov_y; }
 

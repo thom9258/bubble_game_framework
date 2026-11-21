@@ -32,9 +32,19 @@ struct SDLDeleter {
 
 using SDLWindowPtr = std::unique_ptr<SDL_Window, SDLDeleter>;
 
-struct GlobalContext {
-  static auto create() -> std::optional<GlobalContext>;
+class GlobalContext {
+public:
+  [[nodiscard]] static auto create() -> std::unique_ptr<GlobalContext>;
+
+  GlobalContext(const GlobalContext &) = delete;
+  GlobalContext &operator=(const GlobalContext &) = delete;
+  GlobalContext(GlobalContext &&) = delete;
+  GlobalContext &operator=(GlobalContext &&) = delete;
+
   ~GlobalContext();
+
+private:
+  GlobalContext() = default;
 };
 
 class ContextImpl {
@@ -84,7 +94,7 @@ public:
       -> std::uint32_t;
 
   LogCallback logcallback{default_log_callback};
-  std::optional<GlobalContext> globalcontext;
+  std::unique_ptr<GlobalContext> globalcontext;
   SDLWindowPtr window{nullptr};
   std::vector<SDL_Event> events{};
   bool requested_close{false};
@@ -95,6 +105,7 @@ public:
   vk::UniqueDevice m_device;
   vk::Queue queue;
   vk::UniqueCommandPool commandpool;
+  vk::Extent2D window_extent;
 
 private:
   ContextImpl() = default;
