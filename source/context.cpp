@@ -418,18 +418,7 @@ auto poll_events() -> void {
   ContextImpl::instance().events = events;
 }
 
-auto handle_events() -> void {
-  for (SDL_Event event : ContextImpl::instance().events) {
-    if (event.type == SDL_QUIT) {
-      ContextImpl::instance().requested_close = true;
-    }
-  }
-}
-
-auto Context::begin_frame() -> void {
-  poll_events();
-  handle_events();
-}
+auto Context::begin_frame() -> void { poll_events(); }
 
 [[nodiscard]]
 auto Context::requested_close() -> bool {

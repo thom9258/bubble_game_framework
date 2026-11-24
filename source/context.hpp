@@ -4,6 +4,7 @@
 
 #include "sdl_vulkan.hpp"
 
+#include <bitset>
 #include <format>
 #include <functional>
 #include <memory>

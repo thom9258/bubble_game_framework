@@ -4,7 +4,7 @@
 #include <bubble/bubble.hpp>
 #include <bubble/context.hpp>
 #include <bubble/input.hpp>
-#include <bubble/model_tree.hpp>
+#include <bubble/model.hpp>
 #include <bubble/renderer.hpp>
 #include <bubble/resources.hpp>
 #include <bubble/timer.hpp>
@@ -41,7 +41,7 @@ int main(int argc, char **argv) {
 
   bubble::Renderer::set_clearcolor(bubble::color::pleasant_blue);
 
-  auto loaded_fox = bubble::Resources::load_gltf(
+  auto loaded_fox = bubble::load_gltf_scene(
       "/home/th/Assets/glTF-Sample-Models/2.0/Fox/glTF-Binary/Fox.glb");
 
   if (!loaded_fox.has_value()) {
@@ -80,7 +80,7 @@ int main(int argc, char **argv) {
   if (fox_mesh_data.material) {
     if (const auto bitmap =
             fox_scene.materials[*fox_mesh_data.material].diffuse) {
-      fox_texture = fox->created_textures.at(*bitmap);
+      fox_texture = fox->unique_textures.at(*bitmap);
     }
   }
 
@@ -92,11 +92,11 @@ int main(int argc, char **argv) {
 
   const auto cube_color = bubble::color::ugly_pink;
 
-  auto button_focus = bubble::Button(SDLK_f);
-  auto axis_x = bubble::ButtonAxis(SDLK_d, SDLK_a);
-  auto axis_z = bubble::ButtonAxis(SDLK_s, SDLK_w);
-
-  auto mouse = bubble::Mouse();
+  // auto button_focus = bubble::Button(SDLK_f);
+  // auto axis_x = bubble::ButtonAxis(SDLK_d, SDLK_a);
+  // auto axis_z = bubble::ButtonAxis(SDLK_s, SDLK_w);
+  //
+  // auto mouse = bubble::Mouse();
 
   auto directional_light = bubble::DirectionalLight{};
   directional_light.direction = {-0.4f, -1.0f, -0.3f};
@@ -114,31 +114,26 @@ int main(int argc, char **argv) {
     should_run = !bubble::Context::requested_close();
     const auto deltatime = bubble::Renderer::deltatime().value_or(0.16);
 
-    mouse.update();
+    bubble::Input::mouse_set_locked(
+        bubble::Input::down(bubble::MouseButton::Right));
 
-    if (mouse.right_pressed()) {
-      mouse.lock();
-    }
-    if (mouse.right_released()) {
-      mouse.unlock();
-    }
-    if (mouse.locked()) {
-      const auto mouse_delta = mouse.move_delta();
+    if (bubble::Input::mouse_locked()) {
+      const auto mouse_delta = bubble::Input::mouse_delta();
       const auto rotate_speed = 0.0013f;
-      const auto rotation = glm::vec2(static_cast<float>(mouse_delta.x),
-                                      static_cast<float>(mouse_delta.y));
+      const auto rotation = glm::vec2(static_cast<float>(mouse_delta.dx),
+                                      static_cast<float>(mouse_delta.dy));
       camera.rotate(rotation * rotate_speed);
     }
 
-    button_focus.update();
-    if (button_focus.pressed()) {
+    if (bubble::Input::pressed(bubble::Key::F)) {
       camera.look_at(glm::vec3(0.0f));
     }
 
-    axis_x.update();
-    axis_z.update();
-    const auto move_direction =
-        glm::normalize(glm::vec3(axis_x.value(), 0.0f, axis_z.value()));
+    //   axis_x.update();
+    //   axis_z.update();
+    const auto axis_x = bubble::Input::axis(bubble::Key::D, bubble::Key::A);
+    const auto axis_z = bubble::Input::axis(bubble::Key::S, bubble::Key::W);
+    const auto move_direction = glm::normalize(glm::vec3(axis_x, 0.0f, axis_z));
     if (glm::length(move_direction) > 0.1f) {
       const auto move_speed = 2.0f;
       camera.translate_local(move_direction * static_cast<float>(deltatime) *
@@ -150,7 +145,8 @@ int main(int argc, char **argv) {
     bubble::Renderer::add_light(hemisphere_light);
 
     bubble::Renderer::draw_flatcolor(
-        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f)), bubble::Resources::default_mesh(), cube_color);
+        glm::translate(glm::mat4(1.0f), glm::vec3(0.0f)),
+        bubble::Resources::default_mesh(), cube_color);
 
     bubble::Renderer::draw_textured(
         glm::translate(glm::mat4(1.0f), glm::vec3(1.0f, 0.0f, 0.0f)),

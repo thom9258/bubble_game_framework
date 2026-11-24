@@ -78,7 +78,7 @@ set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/source/input.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/animation.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/source/stb.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/source/source_tree.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/source/model.cpp
 )
 
 add_library(${PROJECT_NAME} ${SOURCES})
@@ -118,6 +118,7 @@ compile_and_embed_shader("animation.frag" "animation_frag" "animation_frag.hpp")
 target_include_directories(${PROJECT_NAME} 
 PUBLIC 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/internal
 
 PRIVATE
     ${CMAKE_CURRENT_BINARY_DIR}/generated

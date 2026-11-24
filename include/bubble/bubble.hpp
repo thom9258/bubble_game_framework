@@ -1,13 +1,18 @@
 #pragma once
 
 #include <bubble/system_concept.hpp>
+#include <bubble/context.hpp>
+#include <bubble/renderer.hpp>
+#include <bubble/resources.hpp>
+#include <bubble/input.hpp>
+
 
 #include <concepts>
 #include <functional>
 #include <tuple>
 #include <type_traits>
 
-#define BUBBLE_REQUIRED_SYSTEMS bubble::Context, bubble::Resources, bubble::Renderer
+#define BUBBLE_REQUIRED_SYSTEMS bubble::Context, bubble::Resources, bubble::Renderer, bubble::Input
 
 namespace bubble {
 

@@ -1,117 +1,181 @@
 #pragma once
 
-// TODO: should be hidden beneath...
-#include "internal/glm.hpp"
-#include "internal/sdl.hpp"
+#include "imgui.h"
+#include <bubble/system_concept.hpp>
+
+#include <cstdint>
 
 namespace bubble {
 
-namespace detail {
+enum class Key : std::uint16_t {
+  Unknown = 0,
 
-class ButtonState {
-public:
-  auto next_frame() -> void;
+  A = 4,
+  B,
+  C,
+  D,
+  E,
+  F,
+  G,
+  H,
+  I,
+  J,
+  K,
+  L,
+  M,
+  N,
+  O,
+  P,
+  Q,
+  R,
+  S,
+  T,
+  U,
+  V,
+  W,
+  X,
+  Y,
+  Z,
 
-  auto press() -> void;
+  Num1 = 30,
+  Num2,
+  Num3,
+  Num4,
+  Num5,
+  Num6,
+  Num7,
+  Num8,
+  Num9,
+  Num0 = 39,
 
-  auto release() -> void;
+  Enter = 40,
+  Escape,
+  Backspace,
+  Tab,
+  Space,
+  Minus = 45,
+  Equals,
+  LeftBracket,
+  RightBracket,
+  Backslash,
+  Semicolon = 51,
+  Apostrophe,
+  Grave,
+  Comma,
+  Period,
+  Slash,
+  CapsLock = 57,
 
-  [[nodiscard]]
-  auto pressed() const -> bool;
+  F1 = 58,
+  F2,
+  F3,
+  F4,
+  F5,
+  F6,
+  F7,
+  F8,
+  F9,
+  F10,
+  F11,
+  F12,
 
-  [[nodiscard]]
-  auto released() const -> bool;
+  PrintScreen = 70,
+  ScrollLock,
+  Pause,
+  Insert = 73,
+  Home,
+  PageUp,
+  Delete,
+  End,
+  PageDown,
+  Right = 79,
+  Left,
+  Down,
+  Up,
 
-  [[nodiscard]]
-  auto held() const -> bool;
+  NumLock = 83,
+  KeypadDivide = 84,
+  KeypadMultiply,
+  KeypadMinus,
+  KeypadPlus,
+  KeypadEnter,
+  Keypad1 = 89,
+  Keypad2,
+  Keypad3,
+  Keypad4,
+  Keypad5,
+  Keypad6,
+  Keypad7,
+  Keypad8,
+  Keypad9,
+  Keypad0,
+  KeypadPeriod,
 
-private:
-  bool _pressed{false};
-  bool _released{false};
-  bool _held{false};
+  LeftCtrl = 224,
+  LeftShift,
+  LeftAlt,
+  LeftSuper,
+  RightCtrl = 228,
+  RightShift,
+  RightAlt,
+  RightSuper
 };
 
-} // namespace detail
-
-class Button {
-public:
-  explicit Button(int keycode);
-
-  auto update() -> void;
-
-  [[nodiscard]]
-  auto pressed() const -> bool;
-
-  [[nodiscard]]
-  auto released() const -> bool;
-
-  [[nodiscard]]
-  auto held() const -> bool;
-
-private:
-  int _keycode{0};
-  detail::ButtonState _state;
+enum class MouseButton : std::uint8_t {
+  Left = 1,
+  Middle,
+  Right,
+  Back,
+  Forward
 };
 
-class ButtonAxis {
-public:
-  explicit ButtonAxis(int negative, int positive);
-
-  auto update() -> void;
-
-  [[nodiscard]]
-  auto value() const -> int;
-
-private:
-  int _negative{0};
-  int _positive{0};
-  bool _negative_held{false};
-  bool _positive_held{false};
+struct MousePosition {
+  float x{0};
+  float y{0};
 };
 
-class Mouse {
+struct MouseDelta {
+  float dx{0};
+  float dy{0};
+};
+
+class Input {
 public:
-  auto update() -> void;
-
   [[nodiscard]]
-  auto position() -> glm::ivec2;
+  static auto initialize(const InitializeConfig &config) -> bool;
 
-  [[nodiscard]]
-  auto move_delta() -> glm::ivec2;
+  static auto destroy() -> void;
 
-  [[nodiscard]]
-  auto left_pressed() const -> bool;
+  static auto begin_frame() -> void;
 
-  [[nodiscard]]
-  auto left_released() const -> bool;
+  [[nodiscard]] static auto down(Key key) -> bool;
+  [[nodiscard]] static auto pressed(Key key) -> bool;
+  [[nodiscard]] static auto released(Key key) -> bool;
 
-  [[nodiscard]]
-  auto left_held() const -> bool;
+  [[nodiscard]] static auto axis(Key negative, Key positive) -> float;
 
-  [[nodiscard]]
-  auto right_pressed() const -> bool;
+  [[nodiscard]] static auto shift() -> bool;
+  [[nodiscard]] static auto ctrl() -> bool;
+  [[nodiscard]] static auto alt() -> bool;
 
-  [[nodiscard]]
-  auto right_released() const -> bool;
+  [[nodiscard]] static auto down(MouseButton button) -> bool;
+  [[nodiscard]] static auto pressed(MouseButton button) -> bool;
+  [[nodiscard]] static auto released(MouseButton button) -> bool;
 
-  [[nodiscard]]
-  auto right_held() const -> bool;
+  [[nodiscard]] static auto mouse_position() -> MousePosition;
+  [[nodiscard]] static auto mouse_delta() -> MouseDelta;
 
-  auto lock() -> void;
+  static auto mouse_set_locked(bool locked) -> void;
+  [[nodiscard]] static auto mouse_locked() -> bool;
 
-  auto unlock() -> void;
-
-  [[nodiscard]]
-  auto locked() const -> bool;
-
-  auto center_mouse_position() -> void;
+  static auto mouse_set_visible(bool visible) -> void;
+  [[nodiscard]] static auto mouse_visible() -> bool;
 
 private:
-  bool _locked{false};
-  glm::ivec2 _move_delta{};
-  glm::ivec2 _position{};
-  detail::ButtonState _left;
-  detail::ButtonState _right;
+  Input() = delete;
 };
 
 } // namespace bubble
+
+static_assert(bubble::System<bubble::Input>);
+static_assert(bubble::SystemHasBeginFrame<bubble::Input>);
