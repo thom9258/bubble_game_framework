@@ -26,7 +26,7 @@ int main(int argc, char **argv) {
   auto config = bubble::InitializeConfig{};
   config.height = 600;
   config.width = config.height * (4.0f / 3.0f);
-  config.options.enable_graphics_validation = false;
+  config.options.graphics_validation = true;
   config.options.presentation_mode = bubble::PresentationMode::VSync;
 
   if (!bubble.initialize(config)) {
@@ -41,62 +41,33 @@ int main(int argc, char **argv) {
 
   bubble::Renderer::set_clearcolor(bubble::color::pleasant_blue);
 
-  auto loaded_fox = bubble::load_gltf_scene(
+  auto fox = bubble::load_model(
       "/home/th/Assets/glTF-Sample-Models/2.0/Fox/glTF-Binary/Fox.glb");
-
-  if (!loaded_fox.has_value()) {
-    std::println("Fox load error: '{}'", loaded_fox.error());
+  if (!fox) {
+    std::println("Fox load error: '{}'", fox.error());
     return 1;
   }
 
-  auto fox = create_model_tree(loaded_fox.value());
-  if (!fox.has_value()) {
-    std::println("Fox create error: '{}'", fox.error());
-    return 1;
+  for (std::size_t i = 0; i < fox->scene.animations.size(); ++i) {
+    const auto &clip = fox->scene.animations[i];
+    const auto &anim = clip.animation;
+    std::println("animation {}: '{}' {:.2f}s, {} bones", i, clip.name,
+                 anim.total_ticks().get() / anim.ticks_per_second().get(),
+                 anim.m_bones.size());
   }
 
-  // --- Fox: animations + skinned mesh ----------------------------------------
-  auto &fox_scene = loaded_fox.value();
-  for (std::size_t i = 0; i < fox_scene.animations.size(); ++i) {
-    auto &a = fox_scene.animations[i];
-    std::println("animation {}: '{}' {:.2f}s, {} bones", i, a.name,
-                 a.animation.total_ticks().get(), a.animation.m_bones.size());
-  }
+  const auto fox_animations = std::vector{"Survey", "Walk", "Run"};
+  std::size_t current_fox_animation = 0;
 
-  // The Fox is a single skinned mesh: interleave Vertex + BoneVertex
-  // into AnimatedVertex for the animation pipeline.
-  const auto &fox_mesh_data = fox_scene.meshes.at(0);
-  auto fox_mesh = bubble::Resources::create_animated_mesh(
-      fox_mesh_data.vertices, fox_mesh_data.bone_vertices,
-      fox_mesh_data.indices);
-  if (!fox_mesh.has_value()) {
-    std::println("Fox animated mesh create error");
-    return 1;
+  auto fox_animator = bubble::Animator(*fox);
+  if (!fox_animator.play(fox_animations[current_fox_animation])) {
+    std::println("no clip named 'Walk'");
   }
-
-  // Reuse the texture the model tree already uploaded:
-  // material -> bitmap index -> created_textures (same indices as bitmaps).
-  auto fox_texture = bubble::Resources::default_texture();
-  if (fox_mesh_data.material) {
-    if (const auto bitmap =
-            fox_scene.materials[*fox_mesh_data.material].diffuse) {
-      fox_texture = fox->unique_textures.at(*bitmap);
-    }
-  }
-
-  std::size_t current_clip = fox_scene.animations.size() > 1 ? 1 : 0; // Walk
-  double animation_time = 0.0;
 
   auto camera =
       bubble::Camera(glm::vec3(0.0f, 0.0f, -3.0f), glm::vec3(0.0f, 0.0f, 1.0f));
 
   const auto cube_color = bubble::color::ugly_pink;
-
-  // auto button_focus = bubble::Button(SDLK_f);
-  // auto axis_x = bubble::ButtonAxis(SDLK_d, SDLK_a);
-  // auto axis_z = bubble::ButtonAxis(SDLK_s, SDLK_w);
-  //
-  // auto mouse = bubble::Mouse();
 
   auto directional_light = bubble::DirectionalLight{};
   directional_light.direction = {-0.4f, -1.0f, -0.3f};
@@ -119,20 +90,40 @@ int main(int argc, char **argv) {
 
     if (bubble::Input::mouse_locked()) {
       const auto mouse_delta = bubble::Input::mouse_delta();
-      const auto rotate_speed = 0.0013f;
       const auto rotation = glm::vec2(static_cast<float>(mouse_delta.dx),
                                       static_cast<float>(mouse_delta.dy));
-      camera.rotate(rotation * rotate_speed);
+      const auto mouse_rotate_speed = 0.0013f;
+      camera.rotate(rotation * mouse_rotate_speed);
     }
 
-    if (bubble::Input::pressed(bubble::Key::F)) {
+    if (bubble::Input::gamepad_connected()) {
+      const auto rotation_x = bubble::Input::axis(bubble::GamepadAxis::RightX);
+      const auto rotation_y = bubble::Input::axis(bubble::GamepadAxis::RightY);
+      const auto gamepad_rotate_speed = 0.02f;
+      camera.rotate(glm::vec2(rotation_x, rotation_y) * gamepad_rotate_speed);
+    }
+
+    if (bubble::Input::pressed(bubble::Key::F) ||
+        bubble::Input::pressed(bubble::GamepadButton::South)) {
       camera.look_at(glm::vec3(0.0f));
     }
 
-    //   axis_x.update();
-    //   axis_z.update();
-    const auto axis_x = bubble::Input::axis(bubble::Key::D, bubble::Key::A);
-    const auto axis_z = bubble::Input::axis(bubble::Key::S, bubble::Key::W);
+    if (bubble::Input::pressed(bubble::Key::N) ||
+        bubble::Input::pressed(bubble::GamepadButton::East)) {
+      current_fox_animation++;
+      if (current_fox_animation >= fox_animations.size()) {
+        current_fox_animation = 0;
+      }
+
+      if (!fox_animator.play(fox_animations[current_fox_animation])) {
+        std::println("no clip named 'Walk'");
+      }
+    }
+
+    const auto axis_x = bubble::Input::axis(bubble::Key::D, bubble::Key::A) -
+                        bubble::Input::axis(bubble::GamepadAxis::LeftX);
+    const auto axis_z = bubble::Input::axis(bubble::Key::S, bubble::Key::W) -
+                        bubble::Input::axis(bubble::GamepadAxis::LeftY);
     const auto move_direction = glm::normalize(glm::vec3(axis_x, 0.0f, axis_z));
     if (glm::length(move_direction) > 0.1f) {
       const auto move_speed = 2.0f;
@@ -157,20 +148,8 @@ int main(int argc, char **argv) {
         glm::translate(glm::mat4(1.0f), glm::vec3(-1.0f, 0.0f, 0.0f)),
         glm::vec3(0.02f));
 
-    if (!fox_scene.animations.empty()) {
-      animation_time += deltatime;
-
-      auto &clip = fox_scene.animations[current_clip].animation;
-      auto pose =
-          clip.animate(animation_time); // loops: fmod over the clip length
-      auto bones = bubble::animation::calculate_final_animation_state(
-          clip.bone_infos(), pose);
-
-      if (bones.has_value()) {
-        bubble::Renderer::draw_animated(fox_transform, *fox_mesh, fox_texture,
-                                        bones->matrices());
-      }
-    }
+    fox_animator.update(static_cast<float>(deltatime));
+    bubble::draw_model(*fox, fox_transform, fox_animator);
 
     ImGui::SetNextWindowPos(ImVec2(0.0f, 0.0f));
     ImGui::Begin("Debug", nullptr,
@@ -188,6 +167,10 @@ int main(int argc, char **argv) {
     ImGui::Text("%.0f FPS (%.2f ms)", fps, 1000.0f / fps);
     ImGui::End();
     bubble.end_frame();
+  }
+
+  if (fox.has_value()) {
+    bubble::unload_model(*fox);
   }
 
   bubble.destroy();

@@ -953,7 +953,7 @@ auto load_gltf_scene(std::filesystem::path path)
   }
 
   // --- Meshes: every glTF primitive once; nodes reference them by index ---
-  auto ctx = CgltfContext{data.get(), {}};
+  auto ctx = CgltfContext{data.get(), {}, {}};
   ctx.node_names = unique_node_names(*data); // new
 
   ctx.mesh_map.resize(data->meshes_count);
@@ -1029,16 +1029,26 @@ auto load_gltf_scene(std::filesystem::path path)
 
 namespace {
 
+// indexed like GltfScene::meshes; exactly one of mesh / animated is set
+struct UploadedMesh {
+  std::optional<MeshRef> mesh;
+  std::optional<AnimatedMeshRef> animated;
+  TextureRef texture;
+};
+
 // `uploaded` is indexed like GltfScene::meshes.
 auto convert_node(const GltfModel &model,
-                  const std::vector<ModelTreeMesh> &uploaded) -> ModelTreeNode {
+                  const std::vector<UploadedMesh> &uploaded) -> ModelTreeNode {
   ModelTreeNode node;
   node.name = model.name;
   node.transform = model.transform;
 
-  node.meshes.reserve(model.meshes.size());
   for (const auto index : model.meshes) {
-    node.meshes.push_back(uploaded[index]); // copies the handles, not the mesh
+    const auto &u = uploaded[index];
+    if (u.animated)
+      node.skinned_meshes.push_back({*u.animated, u.texture});
+    else
+      node.meshes.push_back({*u.mesh, u.texture});
   }
 
   node.children.reserve(model.children.size());
@@ -1081,10 +1091,8 @@ auto create_model_tree(GltfScene &scene)
   }
 
   // --- Meshes: one per GltfMesh (indexed like GltfScene::meshes) -----------
-  // Skinned meshes are uploaded as static meshes for now (bind pose).
-  std::vector<ModelTreeMesh> uploaded;
+  std::vector<UploadedMesh> uploaded;
   uploaded.reserve(scene.meshes.size());
-  tree.unique_meshes.reserve(scene.meshes.size());
 
   for (std::size_t i = 0; i < scene.meshes.size(); ++i) {
     const auto &mesh = scene.meshes[i];
@@ -1095,6 +1103,7 @@ auto create_model_tree(GltfScene &scene)
         return fail(std::format("mesh {}: material index {} out of range", i,
                                 *mesh.material));
       }
+
       if (const auto diffuse = scene.materials[*mesh.material].diffuse) {
         if (*diffuse >= tree.unique_textures.size()) {
           return fail(std::format("mesh {}: bitmap index {} out of range", i,
@@ -1104,12 +1113,22 @@ auto create_model_tree(GltfScene &scene)
       }
     }
 
-    auto ref = Resources::create_mesh(mesh.vertices, mesh.indices);
-    if (!ref) {
-      return fail(std::format("failed to create mesh {}", i));
+    if (!mesh.bone_vertices.empty()) {
+      auto ref = Resources::create_animated_mesh(
+          mesh.vertices, mesh.bone_vertices, mesh.indices);
+      if (!ref) {
+        return fail(std::format("failed to create animated mesh {}", i));
+      }
+      tree.unique_animated_meshes.push_back(*ref);
+      uploaded.push_back({std::nullopt, *ref, texture});
+    } else {
+      auto ref = Resources::create_mesh(mesh.vertices, mesh.indices);
+      if (!ref) {
+        return fail(std::format("failed to create mesh {}", i));
+      }
+      tree.unique_meshes.push_back(*ref);
+      uploaded.push_back({*ref, std::nullopt, texture});
     }
-    tree.unique_meshes.push_back(*ref);
-    uploaded.push_back({*ref, texture});
   }
 
   // --- Node tree: indices resolved to handles -------------------------------
@@ -1124,6 +1143,9 @@ auto create_model_tree(GltfScene &scene)
 auto destroy_model_tree(ModelTree &tree) -> void {
   for (const auto &mesh : tree.unique_meshes) {
     Resources::destroy_mesh(mesh);
+  }
+  for (const auto &mesh : tree.unique_animated_meshes) {
+    Resources::destroy_animated_mesh(mesh);
   }
   for (const auto &texture : tree.unique_textures) {
     Resources::destroy_texture(texture);
@@ -1155,10 +1177,102 @@ auto load_model(std::filesystem::path path)
   return model;
 }
 
-auto create_animator(Model &model) -> std::expected<Animator, std::string>
-{
-    auto animator = Animator{};
-    return animator;
+Animator::Animator(const Model &model) : _model(&model) {
+  const auto &clips = model.scene.animations;
+  if (!clips.empty()) // identity joint matrices = bind pose
+    _bones.assign(clips[0].animation.bone_infos().bone_count(),
+                  glm::mat4(1.0f));
+}
+
+auto Animator::play(std::string_view name, PlayMode mode, bool restart)
+    -> bool {
+  const auto &clips = _model->scene.animations;
+  auto it = std::ranges::find(clips, name, &GltfAnimation::name);
+  if (it == clips.end())
+    return false;
+
+  const auto index = static_cast<std::size_t>(it - clips.begin());
+  if (_clip == index && !restart) {
+    _mode = mode;
+    return true;
+  } // safe to call every frame
+  _clip = index;
+  _mode = mode;
+  _time = 0.0;
+  _finished = false;
+  return true;
+}
+
+auto Animator::update(float dt) -> void {
+  if (!_clip)
+    return;
+  const auto &clip = _model->scene.animations[*_clip].animation;
+  const double duration =
+      clip.total_ticks().get() / clip.ticks_per_second().get();
+  if (duration <= 0.0)
+    return;
+
+  _time += dt;
+  if (_mode == PlayMode::Loop) {
+    _time = std::fmod(_time, duration);
+  } else if (_time >= duration) {
+    _time = duration;
+    _finished = true;
+  }
+
+  // Bone::*_index() uses `time < next.timeStamp`, so sampling exactly at the
+  // end fails
+  const double sample = std::min(_time, std::nextafter(duration, 0.0));
+  auto pose = clip.animate(sample);
+  if (!pose)
+    return; // keep the last good pose
+  auto state =
+      animation::calculate_final_animation_state(clip.bone_infos(), *pose);
+  if (!state)
+    return;
+  _bones.assign(state->matrices().begin(), state->matrices().end());
+}
+
+auto Animator::finished() const -> bool {
+  return _mode == PlayMode::Once && _finished;
+}
+
+auto Animator::bone_matrices() const -> std::span<const glm::mat4> {
+  return _bones;
+}
+
+namespace {
+auto draw_node(const ModelTreeNode &node, glm::mat4 parent, glm::mat4 transform,
+               std::span<const glm::mat4> bones) -> void {
+  const glm::mat4 world = parent * node.transform;
+  for (const auto &m : node.meshes)
+    Renderer::draw_textured(world, m.mesh, m.texture);
+  for (const auto &m :
+       node.skinned_meshes) // glTF: skinned mesh ignores its node transform
+    Renderer::draw_animated(transform, m.mesh, m.texture, bones);
+  for (const auto &child : node.children)
+    draw_node(child, world, transform, bones);
+}
+} // namespace
+
+auto draw_model(const Model &model, glm::mat4 transform) -> void {
+  static const std::vector<glm::mat4> bind_pose(max_animation_bones,
+                                                glm::mat4(1.0f));
+  for (const auto &root : model.tree.roots)
+    draw_node(root, transform, transform, bind_pose);
+}
+
+auto draw_model(const Model &model, glm::mat4 transform,
+                const Animator &animator) -> void {
+  for (const auto &root : model.tree.roots)
+    draw_node(root, transform, transform, animator.bone_matrices());
+}
+
+auto unload_model(Model &model) -> void {
+  //TODO: This is a very bad fix for deleting stuff that is still in use.
+  ContextImpl::device().waitIdle();
+  destroy_model_tree(model.tree);
+  model = {};
 }
 
 } // namespace bubble

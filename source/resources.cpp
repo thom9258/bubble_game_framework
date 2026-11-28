@@ -390,11 +390,11 @@ auto Resources::create_texture(Bitmap &bitmap) -> std::optional<TextureRef> {
                   .setNewLayout(vk::ImageLayout::eShaderReadOnlyOptimal)
                   .setImage(texture.image())
                   .setSubresourceRange(source_range)
-                  .setSrcAccessMask(vk::AccessFlags())
-                  .setDstAccessMask(vk::AccessFlagBits::eTransferWrite);
+                  .setSrcAccessMask(vk::AccessFlagBits::eTransferWrite)
+                  .setDstAccessMask(vk::AccessFlagBits::eShaderRead);
 
-          commandbuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTopOfPipe,
-                                        vk::PipelineStageFlagBits::eTransfer,
+          commandbuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
+                                        vk::PipelineStageFlagBits::eFragmentShader,
                                         vk::DependencyFlags(), nullptr, nullptr,
                                         barrier);
         }
@@ -415,6 +415,8 @@ auto Resources::create_texture(Bitmap &bitmap) -> std::optional<TextureRef> {
 }
 
 auto Resources::destroy_texture(TextureRef ref) -> void {
+  //TODO: This is a very bad fix for deleting stuff that is still in use.
+  ContextImpl::device().waitIdle();
   ResourcesImpl::instance().texture_sources.remove(
       Ref(ref.index(), ref.generation()));
 }

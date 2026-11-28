@@ -62,6 +62,11 @@ struct GltfScene {
   std::vector<GltfAnimation> animations;
 };
 
+struct ModelTreeSkinnedMesh {
+  AnimatedMeshRef mesh;
+  TextureRef texture;
+};
+
 struct ModelTreeMesh {
   MeshRef mesh;
   TextureRef texture;
@@ -71,24 +76,43 @@ struct ModelTreeNode {
   std::string name;
   glm::mat4 transform{1.0f};
   std::vector<ModelTreeMesh> meshes;
+  std::vector<ModelTreeSkinnedMesh> skinned_meshes;
   std::vector<ModelTreeNode> children;
 };
 
 struct ModelTree {
   std::vector<ModelTreeNode> roots;
   std::vector<MeshRef> unique_meshes;
+  std::vector<AnimatedMeshRef> unique_animated_meshes;
   std::vector<TextureRef> unique_textures;
-};
-
-struct Animator {
-    auto play(std::string_view name);
-
-    std::vector<GltfAnimation> animations;
 };
 
 struct Model {
   GltfScene scene;
   ModelTree tree;
+};
+
+enum class PlayMode {
+  Once,
+  Loop,
+};
+
+class Animator {
+public:
+  explicit Animator(const Model &model);
+  auto play(std::string_view clip, PlayMode mode = PlayMode::Loop,
+            bool restart = false) -> bool;
+  auto update(float dt) -> void;
+  auto finished() const -> bool;
+  auto bone_matrices() const -> std::span<const glm::mat4>;
+
+private:
+  const Model *_model = nullptr;
+  std::optional<std::size_t> _clip;
+  PlayMode _mode = PlayMode::Loop;
+  double _time = 0.0;
+  bool _finished = false;
+  std::vector<glm::mat4> _bones;
 };
 
 auto load_gltf_scene(std::filesystem::path path)
@@ -105,6 +129,11 @@ auto draw_model_tree(const ModelTree &tree, glm::mat4 transform) -> void;
 auto load_model(std::filesystem::path path)
     -> std::expected<Model, std::string>;
 
-auto create_animator(Model &model) -> std::expected<Animator, std::string>;
+auto draw_model(const Model &model, glm::mat4 transform) -> void;
+
+auto draw_model(const Model &model, glm::mat4 transform,
+                const Animator &animator) -> void;
+
+auto unload_model(Model &model) -> void;
 
 } // namespace bubble

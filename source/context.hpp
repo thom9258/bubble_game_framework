@@ -35,7 +35,8 @@ using SDLWindowPtr = std::unique_ptr<SDL_Window, SDLDeleter>;
 
 class GlobalContext {
 public:
-  [[nodiscard]] static auto create() -> std::unique_ptr<GlobalContext>;
+  [[nodiscard]] static auto create(const InitializeConfig &config)
+      -> std::unique_ptr<GlobalContext>;
 
   GlobalContext(const GlobalContext &) = delete;
   GlobalContext &operator=(const GlobalContext &) = delete;
@@ -61,7 +62,6 @@ public:
   template <typename F>
     requires requires(F f, vk::CommandBuffer cmdb) { f(cmdb); }
   static constexpr auto immediate_evaluate(F &&f) -> vk::Result {
-
     auto init_commandbuffer_alloc_info =
         vk::CommandBufferAllocateInfo{}
             .setCommandPool(ContextImpl::instance().commandpool.get())
@@ -84,7 +84,7 @@ public:
         vk::FenceCreateInfo{});
     ContextImpl::instance().queue.submit(commandbuffer_submit_info,
                                          fence.get());
-    const auto max_wait = std::numeric_limits<unsigned int>::max();
+    const auto max_wait = std::numeric_limits<std::uint64_t>::max();
     return ContextImpl::instance().device().waitForFences(fence.get(), true,
                                                           max_wait);
   }

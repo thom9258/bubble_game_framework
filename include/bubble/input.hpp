@@ -139,6 +139,36 @@ struct MouseDelta {
   float dy{0};
 };
 
+// Values match SDL_GameControllerButton. Positional names, because SDL's
+// A/B/X/Y means the Xbox *position*, which is wrong on Nintendo pads.
+enum class GamepadButton : std::uint8_t {
+  South = 0,
+  East,
+  West,
+  North, // SDL_CONTROLLER_BUTTON_A, B, X, Y
+  Back,
+  Guide,
+  Start,
+  LeftStick,
+  RightStick,
+  LeftShoulder,
+  RightShoulder,
+  DpadUp,
+  DpadDown,
+  DpadLeft,
+  DpadRight,
+};
+
+// Values match SDL_GameControllerAxis.
+enum class GamepadAxis : std::uint8_t {
+  LeftX = 0,
+  LeftY,
+  RightX,
+  RightY,
+  LeftTrigger,
+  RightTrigger,
+};
+
 class Input {
 public:
   [[nodiscard]]
@@ -170,6 +200,14 @@ public:
 
   static auto mouse_set_visible(bool visible) -> void;
   [[nodiscard]] static auto mouse_visible() -> bool;
+
+  [[nodiscard]] static auto down(GamepadButton button, int pad = 0) -> bool;
+  [[nodiscard]] static auto pressed(GamepadButton button, int pad = 0) -> bool;
+  [[nodiscard]] static auto released(GamepadButton button, int pad = 0) -> bool;
+
+  [[nodiscard]] static auto axis(GamepadAxis axis, int pad = 0) -> float;
+
+  [[nodiscard]] static auto gamepad_connected(int pad = 0) -> bool;
 
 private:
   Input() = delete;

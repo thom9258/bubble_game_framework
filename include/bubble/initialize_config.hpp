@@ -18,8 +18,9 @@ struct InitializeConfig {
 
   struct {
     std::optional<LogCallback> log_callback;
-    bool enable_graphics_validation{false};
+    bool graphics_validation{false};
     PresentationMode presentation_mode{PresentationMode::VSync};
+    bool gamecontroller_support{true};
   } options;
 };
 

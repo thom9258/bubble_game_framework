@@ -5,7 +5,6 @@
 #include <algorithm>
 #include <ranges>
 
-
 namespace bubble::animation {
 
 Bias::Bias(ValueType v) : m_value{std::clamp(v, 0.0, 1.0)} {}
@@ -13,19 +12,21 @@ auto Bias::get() const noexcept -> ValueType { return m_value; }
 auto Bias::min() noexcept -> Bias { return Bias(0.0f); }
 auto Bias::max() noexcept -> Bias { return Bias(1.0f); }
 
-
 TotalTicks::TotalTicks(ValueType v) : m_value{v} {}
 auto TotalTicks::get() const noexcept -> ValueType { return m_value; }
 
 TicksPerSecond::TicksPerSecond(ValueType v) : m_value{v} {}
 auto TicksPerSecond::get() const noexcept -> ValueType { return m_value; }
 
+auto BoneInfos::get() const -> const std::map<std::string, BoneInfo> & {
+  return m_BoneInfoMap;
+}
 
 auto BoneInfos::get() -> std::map<std::string, BoneInfo> & {
   return m_BoneInfoMap;
 }
 
-auto BoneInfos::has_bone(std::string_view name) -> bool {
+auto BoneInfos::has_bone(std::string_view name) const -> bool {
   return get().find(std::string(name)) != get().end();
 }
 
@@ -44,13 +45,15 @@ auto BoneInfos::insert_bone(std::string_view name, glm::mat4 offset) -> int {
   return id;
 }
 
-auto BoneInfos::find_bone_id(std::string_view name) -> std::optional<int> {
+auto BoneInfos::find_bone_id(std::string_view name) const
+    -> std::optional<int> {
   if (!has_bone(name))
     return std::nullopt;
   return get().at(std::string(name)).id;
 }
 
-auto BoneInfos::find_bone(std::string_view name) -> std::optional<BoneInfo> {
+auto BoneInfos::find_bone(std::string_view name) const
+    -> std::optional<BoneInfo> {
   if (!has_bone(name))
     return std::nullopt;
   return get().at(std::string(name));
@@ -62,7 +65,7 @@ auto BoneInfos::bone_count() const -> std::size_t {
 
 Bone::Bone(std::string_view name, int ID) : m_name(name), m_ID(ID) {}
 
-auto Bone::animate(double time) -> std::optional<glm::mat4> {
+auto Bone::animate(double time) const -> std::optional<glm::mat4> {
   std::optional<glm::mat4> translation = interpolate_position(time);
   if (!translation.has_value())
     return std::nullopt;
@@ -78,11 +81,11 @@ auto Bone::animate(double time) -> std::optional<glm::mat4> {
   return translation.value() * rotation.value() * scale.value();
 }
 
-auto Bone::name() -> std::string_view { return m_name; }
+auto Bone::name() const -> std::string_view { return m_name; }
 
 auto Bone::id() const -> int { return m_ID; }
 
-auto Bone::position_index(double time) -> std::optional<std::size_t> {
+auto Bone::position_index(double time) const -> std::optional<std::size_t> {
   for (std::size_t i = 0; i < m_Positions.size() - 1; ++i) {
     if (time < m_Positions[i + 1].timeStamp) {
       return i;
@@ -92,7 +95,7 @@ auto Bone::position_index(double time) -> std::optional<std::size_t> {
   return std::nullopt;
 }
 
-auto Bone::rotation_index(double time) -> std::optional<std::size_t> {
+auto Bone::rotation_index(double time) const -> std::optional<std::size_t> {
   for (std::size_t i = 0; i < m_Rotations.size() - 1; ++i) {
     if (time < m_Rotations[i + 1].timeStamp) {
       return i;
@@ -104,7 +107,7 @@ auto Bone::rotation_index(double time) -> std::optional<std::size_t> {
 
 /* Gets the current index on mKeyScalings to interpolate to based on the
 current animation time */
-auto Bone::scale_index(double time) -> std::optional<std::size_t> {
+auto Bone::scale_index(double time) const -> std::optional<std::size_t> {
   for (std::size_t i = 0; i < m_Scales.size() - 1; ++i) {
     if (time < m_Scales[i + 1].timeStamp) {
       return i;
@@ -116,20 +119,20 @@ auto Bone::scale_index(double time) -> std::optional<std::size_t> {
 
 auto Bone::get_bias_between_keyframes(double lastTimeStamp,
                                       double nextTimeStamp,
-                                      double animationTime) -> Bias {
+                                      double animationTime) const -> Bias {
 
   double midWayLength = animationTime - lastTimeStamp;
   double framesDiff = nextTimeStamp - lastTimeStamp;
   Bias bias(midWayLength / framesDiff);
   if (bias.get() != midWayLength / framesDiff) {
     LOG_WARN("Funky Bias calculation between keyframes, with value {}",
-                 midWayLength / framesDiff);
+             midWayLength / framesDiff);
   }
 
   return bias;
 }
 
-auto Bone::interpolate_position(double time) -> std::optional<glm::mat4> {
+auto Bone::interpolate_position(double time) const -> std::optional<glm::mat4> {
   if (1 == m_Positions.size())
     return glm::translate(glm::mat4(1.0f), m_Positions[0].position);
 
@@ -151,7 +154,7 @@ auto Bone::interpolate_position(double time) -> std::optional<glm::mat4> {
   return glm::translate(glm::mat4(1.0f), position);
 }
 
-auto Bone::interpolate_rotation(double time) -> std::optional<glm::mat4> {
+auto Bone::interpolate_rotation(double time) const -> std::optional<glm::mat4> {
   if (1 == m_Rotations.size()) {
     auto rotation = glm::normalize(m_Rotations[0].orientation);
     return glm::toMat4(rotation);
@@ -175,7 +178,7 @@ auto Bone::interpolate_rotation(double time) -> std::optional<glm::mat4> {
   return glm::toMat4(glm::normalize(rotation));
 }
 
-auto Bone::interpolate_scale(double time) -> std::optional<glm::mat4> {
+auto Bone::interpolate_scale(double time) const -> std::optional<glm::mat4> {
   if (1 == m_Scales.size())
     return glm::scale(glm::mat4(1.0f), m_Scales[0].scale);
 
@@ -204,17 +207,18 @@ void Skeleton::add_child(Skeleton &&child) {
 }
 
 std::span<Skeleton> Skeleton::children() { return m_children; }
+std::span<const Skeleton> Skeleton::children() const { return m_children; }
 
-std::string_view Skeleton::name() { return m_name; }
+std::string_view Skeleton::name() const { return m_name; }
 
-glm::mat4 Skeleton::model_matrix() { return m_model_matrix; }
+glm::mat4 Skeleton::model_matrix() const { return m_model_matrix; }
 
 void Skeleton::set_model_matrix(glm::mat4 matrix) { m_model_matrix = matrix; }
 
 [[nodiscard]]
-auto copy(Skeleton &skeleton) -> Skeleton {
+auto copy(const Skeleton &skeleton) -> Skeleton {
   Skeleton ret(skeleton.name(), skeleton.model_matrix());
-  for (Skeleton &child : skeleton.children()) {
+  for (const Skeleton &child : skeleton.children()) {
     ret.add_child(copy(child));
   }
 
@@ -248,11 +252,23 @@ auto Animation::find_bone(std::string_view name) -> Bone * {
   }
 }
 
-auto Animation::bone_infos() -> BoneInfos & { return m_bone_infos; }
+auto Animation::find_bone(std::string_view name) const -> const Bone * {
+  auto iter =
+      std::find_if(m_bones.begin(), m_bones.end(),
+                   [&](const Bone &bone) { return bone.name() == name; });
+
+  if (iter == m_bones.end()) {
+    return nullptr;
+  } else {
+    return &(*iter);
+  }
+}
+
+auto Animation::bone_infos() const -> const BoneInfos & { return m_bone_infos; }
 
 void Animation::set_bone_infos(BoneInfos &infos) { m_bone_infos = infos; }
 
-auto Animation::animate(double time) -> std::optional<Skeleton> {
+auto Animation::animate(double time) const -> std::optional<Skeleton> {
   time = std::fmod(time * m_ticks_per_second.get(), m_total_ticks.get());
   bool found_invalid_bone = false;
   const auto get_animated_bone_matrix = [&](auto recurse, Skeleton &skeleton) {
@@ -260,11 +276,11 @@ auto Animation::animate(double time) -> std::optional<Skeleton> {
       return;
     }
 
-    if (Bone *bone = find_bone(skeleton.name())) {
+    if (const Bone *bone = find_bone(skeleton.name())) {
       std::optional<glm::mat4> animated_bone_matrix = bone->animate(time);
       if (!animated_bone_matrix.has_value()) {
         LOG_WARN("Could not calculate animated bone by name {}",
-                     skeleton.name());
+                 skeleton.name());
         found_invalid_bone = true;
         return;
       }
@@ -332,7 +348,7 @@ void FinalAnimationState::insert(std::size_t i, const glm::mat4 &final_matrix) {
 std::span<glm::mat4> FinalAnimationState::matrices() { return m_matrices; }
 
 auto insert_final_matrices(FinalAnimationState &final_state,
-                           BoneInfos &bone_infos, Skeleton &bone,
+                           const BoneInfos &bone_infos, Skeleton &bone,
                            glm::mat4 parent_matrix) -> void {
 
   glm::mat4 current_matrix = parent_matrix;
@@ -345,7 +361,8 @@ auto insert_final_matrices(FinalAnimationState &final_state,
     // as the parent of the children.
     glm::mat4 offset = info.value().offset;
     current_matrix = parent_matrix * bone.model_matrix();
-    final_state.insert(info.value().id, current_matrix * offset);
+    final_state.insert(static_cast<std::size_t>(info.value().id),
+                       current_matrix * offset);
   }
 
   for (Skeleton &child : bone.children()) {
@@ -353,23 +370,22 @@ auto insert_final_matrices(FinalAnimationState &final_state,
   }
 }
 
-auto calculate_final_animation_state(BoneInfos &bone_infos, Skeleton &skeleton)
+auto calculate_final_animation_state(const BoneInfos &bone_infos,
+                                     Skeleton &skeleton)
     -> std::optional<FinalAnimationState> {
   FinalAnimationState final_state(bone_infos.bone_count());
   insert_final_matrices(final_state, bone_infos, skeleton, glm::mat4(1.0f));
   return final_state;
 }
 
-
-auto calculate_final_animation_state(BoneInfos &bone_infos,
+auto calculate_final_animation_state(const BoneInfos &bone_infos,
                                      std::optional<Skeleton> &skeleton)
     -> std::optional<FinalAnimationState> {
   if (!skeleton.has_value()) {
-	  return std::nullopt;
+    return std::nullopt;
   }
 
   return calculate_final_animation_state(bone_infos, skeleton.value());
-}    
+}
 
-
-} // namespace animation
+} // namespace bubble::animation

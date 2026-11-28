@@ -4,9 +4,9 @@
 
 #include <map>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
-#include <span>
 
 namespace bubble::animation {
 
@@ -27,7 +27,6 @@ public:
 private:
   ValueType m_value;
 };
-
 
 class TotalTicks {
 public:
@@ -59,7 +58,6 @@ private:
   ValueType m_value;
 };
 
-
 namespace keyframe {
 
 struct Position {
@@ -89,29 +87,21 @@ public:
   std::vector<keyframe::Scale> m_Scales;
 
   Bone(std::string_view name, int ID);
-  auto name() -> std::string_view;
-  auto animate(double time) -> std::optional<glm::mat4>;
+  auto name() const -> std::string_view;
+  auto animate(double time) const -> std::optional<glm::mat4>;
   auto id() const -> int;
 
 private:
-  auto position_index(double time)
-      -> std::optional<std::size_t>;
-  auto rotation_index(double time)
-      -> std::optional<std::size_t>;
-  auto scale_index(double time)
-      -> std::optional<std::size_t>;
+  auto position_index(double time) const -> std::optional<std::size_t>;
+  auto rotation_index(double time) const -> std::optional<std::size_t>;
+  auto scale_index(double time) const -> std::optional<std::size_t>;
 
-  auto get_bias_between_keyframes(double lastTimeStamp,
-                                  double nextTimeStamp,
-                                  double animationTime)
-      -> Bias;
+  auto get_bias_between_keyframes(double lastTimeStamp, double nextTimeStamp,
+                                  double animationTime) const -> Bias;
 
-  auto interpolate_position(double time)
-      -> std::optional<glm::mat4>;
-  auto interpolate_rotation(double time)
-      -> std::optional<glm::mat4>;
-  auto interpolate_scale(double time)
-      -> std::optional<glm::mat4>;
+  auto interpolate_position(double time) const -> std::optional<glm::mat4>;
+  auto interpolate_rotation(double time) const -> std::optional<glm::mat4>;
+  auto interpolate_scale(double time) const -> std::optional<glm::mat4>;
 
   std::string m_name;
   int m_ID;
@@ -124,11 +114,12 @@ struct BoneInfo {
 
 class BoneInfos {
 public:
-  auto has_bone(std::string_view name) -> bool;
+  auto has_bone(std::string_view name) const -> bool;
   auto insert_bone(std::string_view name, glm::mat4 offset) -> int;
-  auto find_bone_id(std::string_view name) -> std::optional<int>;
-  auto find_bone(std::string_view name) -> std::optional<BoneInfo>;
+  auto find_bone_id(std::string_view name) const -> std::optional<int>;
+  auto find_bone(std::string_view name) const -> std::optional<BoneInfo>;
   auto get() -> std::map<std::string, BoneInfo> &;
+  auto get() const -> const std::map<std::string, BoneInfo> &;
   auto bone_count() const -> std::size_t;
 
 private:
@@ -147,8 +138,9 @@ public:
 
   void add_child(Skeleton &&child);
   std::span<Skeleton> children();
-  std::string_view name();
-  glm::mat4 model_matrix();
+  std::span<const Skeleton> children() const;
+  std::string_view name() const;
+  glm::mat4 model_matrix() const;
   void set_model_matrix(glm::mat4 matrix);
 
 private:
@@ -158,11 +150,12 @@ private:
 };
 
 [[nodiscard]]
-auto copy(Skeleton &skeleton) -> Skeleton;
+auto copy(const Skeleton &skeleton) -> Skeleton;
 
 class Animation {
 public:
-  Animation(Skeleton skeleton, TotalTicks total_ticks, TicksPerSecond ticks_per_second);
+  Animation(Skeleton skeleton, TotalTicks total_ticks,
+            TicksPerSecond ticks_per_second);
   Animation(Animation &&) = default;
   Animation &operator=(Animation &&) = default;
   Animation(const Animation &) = delete;
@@ -171,14 +164,15 @@ public:
 
   auto add_bone(Bone bone) -> void;
   auto find_bone(std::string_view name) -> Bone *;
+  auto find_bone(std::string_view name) const -> const Bone *;
   auto ticks_per_second() const -> TicksPerSecond;
   auto total_ticks() const -> TotalTicks;
   auto set_ticks_per_second(TicksPerSecond ticks);
-  auto bone_infos() -> BoneInfos &;
+  auto bone_infos() const -> const BoneInfos &;
   void set_bone_infos(BoneInfos &infos);
 
   [[nodiscard]]
-  auto animate(double time) -> std::optional<Skeleton>;
+  auto animate(double time) const -> std::optional<Skeleton>;
 
   Skeleton m_initial_pose;
   BoneInfos m_bone_infos;
@@ -190,7 +184,8 @@ private:
 };
 
 std::optional<Skeleton> blend_skeletons(Skeleton &a, Skeleton &b, Bias bias);
-std::optional<Skeleton> blend_skeletons(std::optional<Skeleton> &a, std::optional<Skeleton> &b, Bias bias);
+std::optional<Skeleton> blend_skeletons(std::optional<Skeleton> &a,
+                                        std::optional<Skeleton> &b, Bias bias);
 
 class FinalAnimationState {
 public:
@@ -208,14 +203,16 @@ private:
 };
 
 auto insert_final_matrices(FinalAnimationState &final_state,
-                           BoneInfos &bone_infos, bool &found_invalid_bone,
-                           Skeleton &bone, glm::mat4 parent_matrix) -> void;
+                           const BoneInfos &bone_infos,
+                           bool &found_invalid_bone, Skeleton &bone,
+                           glm::mat4 parent_matrix) -> void;
 
-auto calculate_final_animation_state(BoneInfos &bone_infos, Skeleton &skeleton)
+auto calculate_final_animation_state(const BoneInfos &bone_infos,
+                                     Skeleton &skeleton)
     -> std::optional<FinalAnimationState>;
 
-
-auto calculate_final_animation_state(BoneInfos &bone_infos, std::optional<Skeleton> &skeleton)
+auto calculate_final_animation_state(const BoneInfos &bone_infos,
+                                     std::optional<Skeleton> &skeleton)
     -> std::optional<FinalAnimationState>;
 
-} // namespace animation
+} // namespace bubble::animation

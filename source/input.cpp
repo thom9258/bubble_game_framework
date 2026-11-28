@@ -3,6 +3,8 @@
 
 #include <SDL_events.h>
 #include <SDL_mouse.h>
+#include <algorithm>
+#include <cmath>
 #include <memory>
 #include <utility>
 
@@ -39,6 +41,23 @@ static_assert(std::to_underlying(Key::LeftSuper) == SDL_SCANCODE_LGUI);
 static_assert(std::to_underlying(Key::RightCtrl) == SDL_SCANCODE_RCTRL);
 static_assert(std::to_underlying(Key::RightSuper) == SDL_SCANCODE_RGUI);
 
+static_assert(std::to_underlying(GamepadButton::South) ==
+              SDL_CONTROLLER_BUTTON_A);
+static_assert(std::to_underlying(GamepadButton::North) ==
+              SDL_CONTROLLER_BUTTON_Y);
+static_assert(std::to_underlying(GamepadButton::Start) ==
+              SDL_CONTROLLER_BUTTON_START);
+static_assert(std::to_underlying(GamepadButton::RightShoulder) ==
+              SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+static_assert(std::to_underlying(GamepadButton::DpadRight) ==
+              SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+static_assert(std::to_underlying(GamepadAxis::LeftX) ==
+              SDL_CONTROLLER_AXIS_LEFTX);
+static_assert(std::to_underlying(GamepadAxis::RightY) ==
+              SDL_CONTROLLER_AXIS_RIGHTY);
+static_assert(std::to_underlying(GamepadAxis::RightTrigger) ==
+              SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+
 static std::unique_ptr<InputImpl> g_instance{nullptr};
 
 auto InputImpl::instance() -> InputImpl & { return *g_instance; }
@@ -46,6 +65,12 @@ auto InputImpl::instance() -> InputImpl & { return *g_instance; }
 auto Input::destroy() -> void {
   if (g_instance == nullptr) {
     return;
+  }
+
+  for (auto &pad : g_instance->gamepads) {
+    if (pad.handle != nullptr) {
+      SDL_GameControllerClose(pad.handle);
+    }
   }
 
   g_instance.reset();
@@ -77,7 +102,88 @@ auto index(MouseButton button) -> std::size_t {
   return static_cast<std::size_t>(std::to_underlying(button));
 }
 
-} // namespace
+auto gamepads() -> std::array<GamepadState, max_gamepad_count> & {
+  return InputImpl::instance().gamepads;
+}
+
+auto index(GamepadButton button) -> std::size_t {
+  return static_cast<std::size_t>(std::to_underlying(button));
+}
+
+auto index(GamepadAxis axis) -> std::size_t {
+  return static_cast<std::size_t>(std::to_underlying(axis));
+}
+
+// Public lookup by slot number; nullptr if out of range or nothing plugged in.
+auto gamepad_at(int pad) -> GamepadState * {
+  if (pad < 0 || static_cast<std::size_t>(pad) >= max_gamepad_count) {
+    return nullptr;
+  }
+  auto &state = gamepads()[static_cast<std::size_t>(pad)];
+  return state.handle != nullptr ? &state : nullptr;
+}
+
+// Event lookup: SDL events carry the joystick instance ID, not our slot.
+auto gamepad_by_id(SDL_JoystickID id) -> GamepadState * {
+  for (auto &pad : gamepads()) {
+    if (pad.handle != nullptr && pad.instance_id == id) {
+      return &pad;
+    }
+  }
+  return nullptr;
+}
+
+auto release_all(GamepadState &pad) -> void {
+  pad.released |= pad.down;
+  pad.down.reset();
+  pad.axes.fill(0.0f);
+}
+
+auto add_gamepad(int device_index) -> void {
+  auto *handle = SDL_GameControllerOpen(device_index);
+  if (handle == nullptr) {
+    return;
+  }
+
+  const auto id = SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(handle));
+
+  // SDL can report a device we already hold; Open just bumped the refcount.
+  if (gamepad_by_id(id) != nullptr) {
+    SDL_GameControllerClose(handle);
+    return;
+  }
+
+  for (auto &pad : gamepads()) {
+    if (pad.handle == nullptr) {
+      pad = GamepadState{};
+      pad.handle = handle;
+      pad.instance_id = id;
+      return;
+    }
+  }
+
+  // All slots taken.
+  SDL_GameControllerClose(handle);
+}
+
+auto remove_gamepad(SDL_JoystickID id) -> void {
+  auto *pad = gamepad_by_id(id);
+  if (pad == nullptr) {
+    return;
+  }
+  SDL_GameControllerClose(pad->handle);
+  release_all(*pad); // held buttons report released() this frame
+  pad->handle = nullptr;
+  pad->instance_id = -1;
+}
+
+auto apply_deadzone(float value, float deadzone) -> float {
+  const auto magnitude = std::abs(value);
+  if (magnitude < deadzone) {
+    return 0.0f;
+  }
+  return std::copysign((magnitude - deadzone) / (1.0f - deadzone), value);
+}
 
 auto handle_input_event(const SDL_Event &event) -> void {
   switch (event.type) {
@@ -109,6 +215,9 @@ auto handle_input_event(const SDL_Event &event) -> void {
       keyboard_state().down.reset();
       mouse_state().released |= mouse_state().down;
       mouse_state().down.reset();
+      for (auto &pad : gamepads()) {
+        release_all(pad);
+      }
     }
     break;
   case SDL_MOUSEBUTTONDOWN: {
@@ -130,18 +239,55 @@ auto handle_input_event(const SDL_Event &event) -> void {
     break;
   }
   case SDL_MOUSEMOTION: {
-    mouse_state().position.x = static_cast<float>(event.motion.x);
-    mouse_state().position.y = static_cast<float>(event.motion.y);
+    if (!Input::mouse_locked()) {
+      mouse_state().position.x = static_cast<float>(event.motion.x);
+      mouse_state().position.y = static_cast<float>(event.motion.y);
+    }
+
     mouse_state().delta.dx += static_cast<float>(event.motion.xrel);
     mouse_state().delta.dy += static_cast<float>(event.motion.yrel);
     break;
   }
   case SDL_MOUSEWHEEL: {
-    float amount = event.wheel.preciseY; // SDL >= 2.0.18, else event.wheel.y
+    float amount = event.wheel.preciseY;
     if (event.wheel.direction == SDL_MOUSEWHEEL_FLIPPED) {
       amount = -amount;
     }
     mouse_state().scroll += amount;
+    break;
+  }
+  case SDL_CONTROLLERDEVICEADDED:
+    add_gamepad(event.cdevice.which);
+    break;
+  case SDL_CONTROLLERDEVICEREMOVED:
+    remove_gamepad(event.cdevice.which);
+    break;
+  case SDL_CONTROLLERBUTTONDOWN: {
+    auto *pad = gamepad_by_id(event.cbutton.which);
+    if (pad == nullptr || event.cbutton.button >= SDL_CONTROLLER_BUTTON_MAX) {
+      break;
+    }
+    pad->down.set(event.cbutton.button);
+    pad->pressed.set(event.cbutton.button);
+    break;
+  }
+  case SDL_CONTROLLERBUTTONUP: {
+    auto *pad = gamepad_by_id(event.cbutton.which);
+    if (pad == nullptr || event.cbutton.button >= SDL_CONTROLLER_BUTTON_MAX) {
+      break;
+    }
+    pad->down.reset(event.cbutton.button);
+    pad->released.set(event.cbutton.button);
+    break;
+  }
+  case SDL_CONTROLLERAXISMOTION: {
+    auto *pad = gamepad_by_id(event.caxis.which);
+    if (pad == nullptr || event.caxis.axis >= SDL_CONTROLLER_AXIS_MAX) {
+      break;
+    }
+    const auto normalized =
+        std::max(static_cast<float>(event.caxis.value) / 32767.0f, -1.0f);
+    pad->axes[event.caxis.axis] = normalized;
     break;
   }
   default:
@@ -149,13 +295,19 @@ auto handle_input_event(const SDL_Event &event) -> void {
   }
 }
 
+} // namespace
+
 auto Input::begin_frame() -> void {
   keyboard_state().pressed.reset();
   keyboard_state().released.reset();
   mouse_state().pressed.reset();
   mouse_state().released.reset();
   mouse_state().delta = MouseDelta{0.0f, 0.0f};
-  mouse_state().position = MousePosition{0.0f, 0.0f};
+  mouse_state().scroll = 0.0f;
+  for (auto &pad : gamepads()) {
+    pad.pressed.reset();
+    pad.released.reset();
+  }
 
   for (const auto &event : get_sdl_events()) {
     handle_input_event(event);
@@ -210,7 +362,14 @@ auto Input::released(MouseButton button) -> bool {
 }
 
 auto Input::mouse_set_locked(bool locked) -> void {
-  SDL_SetRelativeMouseMode(static_cast<SDL_bool>(locked));
+  if (locked == mouse_locked()) {
+    return;
+  }
+
+  std::ignore = SDL_SetRelativeMouseMode(static_cast<SDL_bool>(locked));
+  if (locked) {
+    mouse_state().delta = MouseDelta{0.0f, 0.0f};
+  }
 }
 
 [[nodiscard]] auto Input::mouse_locked() -> bool {
@@ -223,6 +382,39 @@ auto Input::mouse_set_visible(bool visible) -> void {
 
 [[nodiscard]] auto Input::mouse_visible() -> bool {
   return SDL_ShowCursor(SDL_QUERY) == SDL_ENABLE;
+}
+
+auto Input::down(GamepadButton button, int pad) -> bool {
+  const auto *state = gamepad_at(pad);
+  return state != nullptr && state->down.test(index(button));
+}
+
+auto Input::pressed(GamepadButton button, int pad) -> bool {
+  const auto *state = gamepad_at(pad);
+  return state != nullptr && state->pressed.test(index(button));
+}
+
+auto Input::released(GamepadButton button, int pad) -> bool {
+  // Not gamepad_at(): a pad unplugged this frame should still report releases.
+  if (pad < 0 || static_cast<std::size_t>(pad) >= max_gamepad_count) {
+    return false;
+  }
+  return gamepads()[static_cast<std::size_t>(pad)].released.test(index(button));
+}
+
+auto Input::axis(GamepadAxis axis, int pad) -> float {
+  const auto *state = gamepad_at(pad);
+  if (state == nullptr) {
+    return 0.0f;
+  }
+  const auto is_trigger =
+      axis == GamepadAxis::LeftTrigger || axis == GamepadAxis::RightTrigger;
+  const auto deadzone = is_trigger ? 0.05f : 0.15f;
+  return apply_deadzone(state->axes[index(axis)], deadzone);
+}
+
+auto Input::gamepad_connected(int pad) -> bool {
+  return gamepad_at(pad) != nullptr;
 }
 
 } // namespace bubble

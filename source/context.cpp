@@ -1,5 +1,6 @@
 #include "context.hpp"
 
+#include <SDL.h>
 #include <SDL_error.h>
 #include <print>
 #include <ranges>
@@ -54,8 +55,14 @@ auto default_log_callback(LogType type, std::string_view msg) -> void {
   std::println("[{}] {}", stringify(type), msg);
 }
 
-auto GlobalContext::create() -> std::unique_ptr<GlobalContext> {
-  if (SDL_Init(SDL_INIT_VIDEO) < 0) {
+auto GlobalContext::create(const InitializeConfig &config)
+    -> std::unique_ptr<GlobalContext> {
+  auto sdl_flags = SDL_INIT_VIDEO;
+  if (config.options.gamecontroller_support) {
+    sdl_flags |= SDL_INIT_GAMECONTROLLER;
+  }
+
+  if (SDL_Init(sdl_flags) < 0) {
     LOG_ERROR("Could not init SDL, error {}", SDL_GetError());
     return nullptr;
   }
@@ -125,7 +132,7 @@ auto window_instance_extensions() -> std::vector<const char *> {
 
 auto initialize_vulkan_instance(const InitializeConfig &config) -> bool {
   auto instance_extensions = window_instance_extensions();
-  if (config.options.enable_graphics_validation) {
+  if (config.options.graphics_validation) {
     instance_extensions.push_back(VK_EXT_VALIDATION_FEATURES_EXTENSION_NAME);
     instance_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
   }
@@ -161,7 +168,7 @@ auto initialize_vulkan_instance(const InitializeConfig &config) -> bool {
               static_cast<std::uint32_t>(instance_extensions.size()))
           .setPpEnabledExtensionNames(instance_extensions.data());
 
-  if (config.options.enable_graphics_validation) {
+  if (config.options.graphics_validation) {
     instanceCreateInfo.setEnabledLayerCount(
         static_cast<std::uint32_t>(validation_layers.size()));
     instanceCreateInfo.setPpEnabledLayerNames(validation_layers.data());
@@ -432,7 +439,7 @@ auto Context::initialize(const InitializeConfig &config) -> bool {
 
   g_instance.reset(new ContextImpl);
 
-  ContextImpl::instance().globalcontext = GlobalContext::create();
+  ContextImpl::instance().globalcontext = GlobalContext::create(config);
   if (ContextImpl::instance().globalcontext == nullptr) {
     return false;
   }

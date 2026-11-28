@@ -343,7 +343,7 @@ auto initialize_descriptorpool() -> bool {
   return true;
 }
 
-auto initialize_mainpass_attachments(const InitializeConfig &config) -> bool {
+auto initialize_mainpass_attachments() -> bool {
   RendererImpl::instance().mainpass.extent =
       ContextImpl::instance().window_extent;
 
@@ -1390,7 +1390,7 @@ auto Renderer::initialize(const InitializeConfig &config) -> bool {
     return false;
   }
 
-  if (!initialize_mainpass_attachments(config)) {
+  if (!initialize_mainpass_attachments()) {
     return false;
   }
 
@@ -2043,8 +2043,8 @@ auto Renderer::end_frame() -> void {
             .setSubresourceRange(range)
             .setOldLayout(vk::ImageLayout::eUndefined)
             .setNewLayout(vk::ImageLayout::eTransferDstOptimal)
-            .setSrcAccessMask(vk::AccessFlagBits::eTransferRead)
-            .setDstAccessMask(vk::AccessFlags())
+            .setSrcAccessMask(vk::AccessFlags())
+            .setDstAccessMask(vk::AccessFlagBits::eTransferWrite)
             .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
             .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
 
@@ -2071,8 +2071,8 @@ auto Renderer::end_frame() -> void {
                        .setSubresourceRange(range)
                        .setOldLayout(vk::ImageLayout::eColorAttachmentOptimal)
                        .setNewLayout(vk::ImageLayout::eTransferSrcOptimal)
-                       .setSrcAccessMask(vk::AccessFlagBits::eTransferRead)
-                       .setDstAccessMask(vk::AccessFlags())
+                       .setSrcAccessMask(vk::AccessFlags())
+                       .setDstAccessMask(vk::AccessFlagBits::eTransferRead)
                        .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
                        .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
 
@@ -2142,13 +2142,13 @@ auto Renderer::end_frame() -> void {
             .setSubresourceRange(to_present_range)
             .setOldLayout(vk::ImageLayout::eTransferDstOptimal)
             .setNewLayout(vk::ImageLayout::ePresentSrcKHR)
-            .setSrcAccessMask(vk::AccessFlagBits::eTransferRead)
+            .setSrcAccessMask(vk::AccessFlagBits::eTransferWrite)
             .setDstAccessMask(vk::AccessFlags())
             .setSrcQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED)
             .setDstQueueFamilyIndex(VK_QUEUE_FAMILY_IGNORED);
 
     commandbuffer.pipelineBarrier(vk::PipelineStageFlagBits::eTransfer,
-                                  vk::PipelineStageFlagBits::eTransfer,
+                                  vk::PipelineStageFlagBits::eBottomOfPipe,
                                   vk::DependencyFlags(), nullptr, nullptr,
                                   to_present_barrier);
   }
@@ -2160,8 +2160,8 @@ auto Renderer::end_frame() -> void {
                      .get(),
                  rendergraph_finished_signal};
   const auto wait_dst_stage_masks = std::array<vk::PipelineStageFlags, 2>{
-      vk::PipelineStageFlagBits::eColorAttachmentOutput,
-      vk::PipelineStageFlagBits::eTopOfPipe};
+      vk::PipelineStageFlagBits::eTransfer,
+      vk::PipelineStageFlagBits::eTransfer};
 
   const auto queue_signal_semaphores =
       std::array{RendererImpl::instance()
